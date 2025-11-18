@@ -276,7 +276,7 @@ ${d.sample_data.map(item =>
     };
 
     const handleAdjustAlignment = async (projectId, projectName) => {
-        // 先診斷專案，取得 PDF URLs
+        // 先診斷專案，取得 PDF URLs 和實際資料內容
         const diagResult = await diagnoseProject(user.id, projectId);
         if (!diagResult.success) {
             alert(`無法載入專案資料: ${diagResult.error}`);
@@ -291,12 +291,15 @@ ${d.sample_data.map(item =>
             return;
         }
 
-        // 設定對齊工具資料（調整模式）
+        // 取得實際的 source_data（前5筆），包含完整內容
+        const sampleData = diagResult.data.sample_data || [];
+
+        // 設定對齊工具資料（調整模式）- 使用實際的資料內容
         setAlignmentData({
             projectId: projectId,
             projectName: projectName,
-            jsonData: diagResult.data.sample_data.map(item => ({
-                data: '（已存在的資料，僅供參考頁碼）',
+            jsonData: sampleData.map(item => ({
+                data: item.original_data || item.data || '（無資料）',
                 page_number: item.page_number
             })),
             pageUrlMap: pageUrlMap,

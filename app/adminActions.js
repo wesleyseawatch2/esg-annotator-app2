@@ -240,8 +240,8 @@ export async function diagnoseProject(userId, projectId) {
     const project = projectRows[0];
 
     const { rows: sourceData } = await sql`
-      SELECT id, page_number, source_url 
-      FROM source_data 
+      SELECT id, page_number, source_url, original_data
+      FROM source_data
       WHERE project_id = ${projectId}
       ORDER BY id
       LIMIT 5;
