@@ -130,6 +130,12 @@ function AnnotationScreen({ user, project, onBack }) {
 
     useEffect(() => { loadTask(); }, []);
 
+    useEffect(() => {
+        if (currentItem && dataTextRef.current) {
+            dataTextRef.current.innerHTML = currentItem.original_data;
+        }
+    }, [currentItem]);
+
     const loadTask = async () => {
         const taskRes = await getNextTaskForUser(project.id, user.id);
         if (taskRes.task) {
@@ -156,10 +162,6 @@ function AnnotationScreen({ user, project, onBack }) {
     };
 
     const loadTaskData = (task) => {
-        if (dataTextRef.current) {
-            dataTextRef.current.innerHTML = task.original_data;
-        }
-        
         // esg_type 現在是陣列格式，不需要 split
         setEsgTypes(Array.isArray(task.esg_type) ? task.esg_type : (task.esg_type ? task.esg_type.split(',') : []));
         setPromiseStatus(task.promise_status || '');
