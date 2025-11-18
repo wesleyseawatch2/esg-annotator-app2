@@ -2,6 +2,7 @@
 'use server';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
+import { del } from '@vercel/blob';
 
 // --- 刪除專案 ---
 export async function deleteProject(userId, projectId) {
@@ -11,12 +12,38 @@ export async function deleteProject(userId, projectId) {
       return { success: false, error: '權限不足' };
     }
 
+    // 1. 先取得專案的 pdf_urls，以便刪除 Blob 中的檔案
+    const { rows: projectRows } = await sql`
+      SELECT pdf_urls FROM projects WHERE id = ${projectId};
+    `;
+
+    let deletedBlobCount = 0;
+    if (projectRows.length > 0 && projectRows[0].pdf_urls) {
+      const pdfUrls = projectRows[0].pdf_urls;
+      const urls = Object.values(pdfUrls);
+
+      // 刪除 Vercel Blob 中的所有 PDF 檔案
+      for (const url of urls) {
+        try {
+          await del(url);
+          deletedBlobCount++;
+        } catch (blobError) {
+          console.error(`刪除 Blob 失敗 (${url}):`, blobError.message);
+          // 繼續刪除其他檔案，不中斷流程
+        }
+      }
+    }
+
+    // 2. 刪除資料庫中的所有相關資料
     await sql`DELETE FROM annotations WHERE source_data_id IN (SELECT id FROM source_data WHERE project_id = ${projectId});`;
     await sql`DELETE FROM source_data WHERE project_id = ${projectId};`;
     await sql`DELETE FROM projects WHERE id = ${projectId};`;
-    
+
     revalidatePath('/admin');
-    return { success: true };
+    return {
+      success: true,
+      message: `專案已刪除（包含 ${deletedBlobCount} 個 PDF 檔案）`
+    };
   } catch (error) {
     return { success: false, error: error.message };
   }

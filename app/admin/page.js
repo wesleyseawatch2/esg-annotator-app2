@@ -45,10 +45,10 @@ export default function AdminPage() {
     };
 
     const handleDelete = async (projectId) => {
-        if (window.confirm('確定要刪除這個專案嗎？這將永久移除所有相關資料！')) {
+        if (window.confirm('確定要刪除這個專案嗎？\n\n這將永久移除：\n• 資料庫中的所有資料\n• Vercel Blob 中的所有 PDF 檔案\n• 所有相關的標註記錄\n\n此操作無法復原！')) {
             const result = await deleteProject(user.id, projectId);
             if (result.success) {
-                alert('刪除成功');
+                alert(result.message || '刪除成功');
                 loadProjects(user.id);
             } else {
                 alert(`刪除失敗: ${result.error}`);
