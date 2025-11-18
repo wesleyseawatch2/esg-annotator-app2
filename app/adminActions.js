@@ -274,3 +274,41 @@ export async function diagnoseProject(userId, projectId) {
     return { success: false, error: error.message };
   }
 }
+// --- 匯出專案的標註資料（包含使用者名稱）---
+export async function exportProjectAnnotations(userId, projectId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: annotations } = await sql`
+      SELECT
+        a.id,
+        a.source_data_id,
+        a.user_id,
+        u.username,
+        a.esg_type,
+        a.promise_status,
+        a.promise_string,
+        a.verification_timeline,
+        a.evidence_status,
+        a.evidence_string,
+        a.evidence_quality,
+        a.status,
+        a.created_at,
+        a.updated_at,
+        sd.original_data,
+        sd.page_number
+      FROM annotations a
+      JOIN users u ON a.user_id = u.id
+      JOIN source_data sd ON a.source_data_id = sd.id
+      WHERE sd.project_id = ${projectId}
+      ORDER BY a.created_at DESC;
+    `;
+
+    return { success: true, data: annotations };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}

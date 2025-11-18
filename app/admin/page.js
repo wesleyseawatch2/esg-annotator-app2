@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getProjectsWithProgress } from '../actions';
-import { deleteProject, saveProjectData, updateProjectOffset, repairProjectPdfs, diagnoseProject } from '../adminActions';
+import { deleteProject, saveProjectData, updateProjectOffset, repairProjectPdfs, diagnoseProject, exportProjectAnnotations } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
 
@@ -128,6 +128,64 @@ ${d.sample_data.map(item =>
             alert(info);
         } else {
             alert(`診斷失敗: ${result.error}`);
+        }
+    };
+
+    const handleExport = async (projectId, projectName) => {
+        const result = await exportProjectAnnotations(user.id, projectId);
+        if (result.success) {
+            // 轉換為 CSV 格式
+            const data = result.data;
+            if (data.length === 0) {
+                alert('此專案沒有標註資料');
+                return;
+            }
+
+            // CSV 標題
+            const headers = [
+                'id', 'source_data_id', 'user_id', 'username', 'esg_type',
+                'promise_status', 'promise_string', 'verification_timeline',
+                'evidence_status', 'evidence_string', 'evidence_quality',
+                'status', 'created_at', 'updated_at', 'page_number', 'original_data'
+            ];
+
+            // 生成 CSV 內容
+            const csvContent = [
+                headers.join(','),
+                ...data.map(row => [
+                    row.id,
+                    row.source_data_id,
+                    row.user_id,
+                    `"${row.username}"`,
+                    `"${Array.isArray(row.esg_type) ? row.esg_type.join(';') : row.esg_type}"`,
+                    `"${row.promise_status || ''}"`,
+                    `"${(row.promise_string || '').replace(/"/g, '""')}"`,
+                    `"${row.verification_timeline || ''}"`,
+                    `"${row.evidence_status || ''}"`,
+                    `"${(row.evidence_string || '').replace(/"/g, '""')}"`,
+                    `"${row.evidence_quality || ''}"`,
+                    `"${row.status || ''}"`,
+                    `"${row.created_at}"`,
+                    `"${row.updated_at}"`,
+                    row.page_number,
+                    `"${(row.original_data || '').replace(/"/g, '""')}"`
+                ].join(','))
+            ].join('\n');
+
+            // 下載 CSV
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${projectName}_annotations_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            alert(`成功匯出 ${data.length} 筆標註資料`);
+        } else {
+            alert(`匯出失敗: ${result.error}`);
         }
     };
 
@@ -348,8 +406,8 @@ ${d.sample_data.map(item =>
                                     >
                                         診斷
                                     </button>
-                                    <button 
-                                        className="btn" 
+                                    <button
+                                        className="btn"
                                         onClick={() => handleRepairPdfs(p.id)}
                                         style={{
                                             background: '#3b82f6',
@@ -361,8 +419,21 @@ ${d.sample_data.map(item =>
                                     >
                                         修復
                                     </button>
-                                    <button 
-                                        className="btn highlight-btn-clear" 
+                                    <button
+                                        className="btn"
+                                        onClick={() => handleExport(p.id, p.name)}
+                                        style={{
+                                            background: '#10b981',
+                                            color: 'white',
+                                            marginRight: '10px',
+                                            fontSize: '12px',
+                                            padding: '6px 12px'
+                                        }}
+                                    >
+                                        📥 匯出
+                                    </button>
+                                    <button
+                                        className="btn highlight-btn-clear"
                                         onClick={() => handleDelete(p.id)}
                                         style={{
                                             fontSize: '12px',
