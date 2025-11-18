@@ -208,32 +208,58 @@ ${d.sample_data.map(item =>
     const handleConfirmAlignment = async () => {
         if (!alignmentData) return;
 
+        // 驗證 previewStartPage 是否為有效整數
+        const validatedStartPage = parseInt(previewStartPage, 10);
+        if (isNaN(validatedStartPage) || validatedStartPage < 1) {
+            alert('請輸入有效的起始頁碼（必須是 ≥1 的整數）');
+            return;
+        }
+
         setIsUploading(true);
         setMessage('');
 
         try {
             setUploadProgress('儲存資料到資料庫...');
 
-            const result = await saveProjectData(user.id, {
-                projectName: alignmentData.projectName,
-                jsonData: alignmentData.jsonData,
-                pageUrlMap: alignmentData.pageUrlMap,
-                startPage: previewStartPage
-            });
+            // 如果是調整現有專案，使用 updateProjectOffset
+            if (alignmentData.isAdjustment && alignmentData.projectId) {
+                const offset = validatedStartPage - 1;
+                const result = await updateProjectOffset(user.id, alignmentData.projectId, offset);
 
-            setIsUploading(false);
-            setUploadProgress('');
+                setIsUploading(false);
+                setUploadProgress('');
 
-            if (result.success) {
-                setMessage(result.message || '上傳成功！');
-                setSelectedFiles({ json: null, pdfs: [] });
-                setStartPage(10);
-                setShowAlignmentTool(false);
-                setAlignmentData(null);
-                formRef.current.reset();
-                await loadProjects(user.id);
+                if (result.success) {
+                    alert(result.message || '對齊設定已更新！');
+                    setShowAlignmentTool(false);
+                    setAlignmentData(null);
+                    await loadProjects(user.id);
+                } else {
+                    alert(`更新失敗: ${result.error}`);
+                }
             } else {
-                setMessage(`失敗: ${result.error}`);
+                // 新專案上傳
+                const result = await saveProjectData(user.id, {
+                    projectName: alignmentData.projectName,
+                    jsonData: alignmentData.jsonData,
+                    pageUrlMap: alignmentData.pageUrlMap,
+                    startPage: validatedStartPage
+                });
+
+                setIsUploading(false);
+                setUploadProgress('');
+
+                if (result.success) {
+                    setMessage(result.message || '上傳成功！');
+                    setSelectedFiles({ json: null, pdfs: [] });
+                    setStartPage(10);
+                    setShowAlignmentTool(false);
+                    setAlignmentData(null);
+                    if (formRef.current) formRef.current.reset();
+                    await loadProjects(user.id);
+                } else {
+                    setMessage(`失敗: ${result.error}`);
+                }
             }
         } catch (error) {
             setIsUploading(false);
@@ -247,6 +273,43 @@ ${d.sample_data.map(item =>
         setAlignmentData(null);
         setIsUploading(false);
         setUploadProgress('');
+    };
+
+    const handleAdjustAlignment = async (projectId, projectName) => {
+        // 先診斷專案，取得 PDF URLs
+        const diagResult = await diagnoseProject(user.id, projectId);
+        if (!diagResult.success) {
+            alert(`無法載入專案資料: ${diagResult.error}`);
+            return;
+        }
+
+        const projectData = diagResult.data.project;
+        const pageUrlMap = projectData.pdf_urls || {};
+
+        if (Object.keys(pageUrlMap).length === 0) {
+            alert('此專案沒有 PDF 資料，無法調整對齊設定');
+            return;
+        }
+
+        // 設定對齊工具資料（調整模式）
+        setAlignmentData({
+            projectId: projectId,
+            projectName: projectName,
+            jsonData: diagResult.data.sample_data.map(item => ({
+                data: '（已存在的資料，僅供參考頁碼）',
+                page_number: item.page_number
+            })),
+            pageUrlMap: pageUrlMap,
+            isAdjustment: true
+        });
+
+        const pdfPages = Object.keys(pageUrlMap).map(Number).sort((a, b) => a - b);
+        const minPage = Math.min(...pdfPages);
+        const currentStartPage = (projectData.page_offset || 0) + 1;
+
+        setPreviewStartPage(currentStartPage);
+        setSelectedPdfPage(minPage);
+        setShowAlignmentTool(true);
     };
 
     const handleUpload = async (event) => {
@@ -333,13 +396,18 @@ ${d.sample_data.map(item =>
         return (
             <div className="container">
                 <div className="panel" style={{ marginBottom: '20px' }}>
-                    <h1>🎯 PDF 頁碼對齊工具</h1>
+                    <h1>🎯 PDF 頁碼對齊工具 {alignmentData.isAdjustment && '（調整模式）'}</h1>
                     <p style={{ color: '#666', marginTop: '10px' }}>
                         專案名稱: <strong>{alignmentData.projectName}</strong>
                     </p>
                     <p style={{ color: '#666' }}>
                         PDF 頁碼範圍: {minPdfPage} ~ {maxPdfPage} (共 {pdfPages.length} 頁)
                     </p>
+                    {alignmentData.isAdjustment && (
+                        <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '10px' }}>
+                            ⚠️ 調整模式：修改對齊設定將重新對應所有資料的 PDF 連結
+                        </p>
+                    )}
                 </div>
 
                 <div className="panel" style={{ background: '#fef3c7', borderLeft: '4px solid #f59e0b', marginBottom: '20px' }}>
@@ -401,7 +469,20 @@ ${d.sample_data.map(item =>
                                 <input
                                     type="number"
                                     value={previewStartPage}
-                                    onChange={(e) => setPreviewStartPage(parseInt(e.target.value) || 1)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        // 只允許純數字輸入
+                                        if (val === '' || /^\d+$/.test(val)) {
+                                            setPreviewStartPage(parseInt(val) || 1);
+                                        }
+                                    }}
+                                    onBlur={(e) => {
+                                        // 失焦時確保值在範圍內
+                                        const val = parseInt(e.target.value);
+                                        if (isNaN(val) || val < 1) {
+                                            setPreviewStartPage(1);
+                                        }
+                                    }}
                                     style={{
                                         width: '80px',
                                         padding: '8px',
@@ -411,8 +492,7 @@ ${d.sample_data.map(item =>
                                         fontSize: '16px',
                                         fontWeight: 'bold'
                                     }}
-                                    min={minPdfPage}
-                                    max={maxPdfPage}
+                                    min="1"
                                 />
                             </div>
                         </div>
@@ -656,8 +736,21 @@ ${d.sample_data.map(item =>
                                     />
                                 </td>
                                 <td style={{padding: '8px'}}>
-                                    <button 
-                                        className="btn" 
+                                    <button
+                                        className="btn"
+                                        onClick={() => handleAdjustAlignment(p.id, p.name)}
+                                        style={{
+                                            background: '#f59e0b',
+                                            color: 'white',
+                                            marginRight: '10px',
+                                            fontSize: '12px',
+                                            padding: '6px 12px'
+                                        }}
+                                    >
+                                        🎯 調整對齊
+                                    </button>
+                                    <button
+                                        className="btn"
                                         onClick={() => handleDiagnose(p.id)}
                                         style={{
                                             background: '#8b5cf6',
