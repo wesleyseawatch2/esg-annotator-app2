@@ -15,6 +15,11 @@ export default function AdminPage() {
     const [uploadProgress, setUploadProgress] = useState('');
     const [selectedFiles, setSelectedFiles] = useState({ json: null, pdfs: [] });
     const [startPage, setStartPage] = useState(10);
+    const [showAlignmentTool, setShowAlignmentTool] = useState(false);
+    const [alignmentData, setAlignmentData] = useState(null);
+    const [previewStartPage, setPreviewStartPage] = useState(10);
+    const [selectedJsonIndex, setSelectedJsonIndex] = useState(0);
+    const [selectedPdfPage, setSelectedPdfPage] = useState(10);
     const formRef = useRef(null);
     const router = useRouter();
 
@@ -200,6 +205,50 @@ ${d.sample_data.map(item =>
         setMessage(`已選擇 ${files.length} 個 PDF 檔案`);
     };
 
+    const handleConfirmAlignment = async () => {
+        if (!alignmentData) return;
+
+        setIsUploading(true);
+        setMessage('');
+
+        try {
+            setUploadProgress('儲存資料到資料庫...');
+
+            const result = await saveProjectData(user.id, {
+                projectName: alignmentData.projectName,
+                jsonData: alignmentData.jsonData,
+                pageUrlMap: alignmentData.pageUrlMap,
+                startPage: previewStartPage
+            });
+
+            setIsUploading(false);
+            setUploadProgress('');
+
+            if (result.success) {
+                setMessage(result.message || '上傳成功！');
+                setSelectedFiles({ json: null, pdfs: [] });
+                setStartPage(10);
+                setShowAlignmentTool(false);
+                setAlignmentData(null);
+                formRef.current.reset();
+                await loadProjects(user.id);
+            } else {
+                setMessage(`失敗: ${result.error}`);
+            }
+        } catch (error) {
+            setIsUploading(false);
+            setUploadProgress('');
+            setMessage(`錯誤: ${error.message}`);
+        }
+    };
+
+    const handleCancelAlignment = () => {
+        setShowAlignmentTool(false);
+        setAlignmentData(null);
+        setIsUploading(false);
+        setUploadProgress('');
+    };
+
     const handleUpload = async (event) => {
         event.preventDefault();
         if (!user) return;
@@ -241,28 +290,22 @@ ${d.sample_data.map(item =>
                 }
             }
             
-            setUploadProgress('儲存資料到資料庫...');
+            setUploadProgress('');
+            setIsUploading(false);
+
             const projectName = selectedFiles.json.name.replace('esg_annotation_', '').replace('.json', '');
-            
-            const result = await saveProjectData(user.id, {
+
+            // 進入對齊工具
+            setAlignmentData({
                 projectName,
                 jsonData,
-                pageUrlMap,
-                startPage
+                pageUrlMap
             });
-            
-            setIsUploading(false);
-            setUploadProgress('');
-            
-            if (result.success) {
-                setMessage(result.message || '上傳成功！');
-                setSelectedFiles({ json: null, pdfs: [] });
-                setStartPage(10);
-                formRef.current.reset();
-                await loadProjects(user.id);
-            } else {
-                setMessage(`失敗: ${result.error}`);
-            }
+            const pdfPages = Object.keys(pageUrlMap).map(Number).sort((a, b) => a - b);
+            const minPage = Math.min(...pdfPages);
+            setPreviewStartPage(startPage);
+            setSelectedPdfPage(minPage);
+            setShowAlignmentTool(true);
         } catch (error) {
             setIsUploading(false);
             setUploadProgress('');
@@ -272,6 +315,226 @@ ${d.sample_data.map(item =>
     };
 
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
+
+    // 對齊工具 UI
+    if (showAlignmentTool && alignmentData) {
+        const pdfPages = Object.keys(alignmentData.pageUrlMap).map(Number).sort((a, b) => a - b);
+        const minPdfPage = Math.min(...pdfPages);
+        const maxPdfPage = Math.max(...pdfPages);
+
+        // 取得 JSON 前 5 筆資料
+        const sampleJsonData = alignmentData.jsonData.slice(0, 5);
+        const selectedJson = sampleJsonData[selectedJsonIndex];
+
+        // 計算 PDF 頁碼
+        const calculatedPdfPage = (selectedJson?.page_number || 1) + (previewStartPage - 1);
+        const pdfUrl = alignmentData.pageUrlMap[selectedPdfPage];
+
+        return (
+            <div className="container">
+                <div className="panel" style={{ marginBottom: '20px' }}>
+                    <h1>🎯 PDF 頁碼對齊工具</h1>
+                    <p style={{ color: '#666', marginTop: '10px' }}>
+                        專案名稱: <strong>{alignmentData.projectName}</strong>
+                    </p>
+                    <p style={{ color: '#666' }}>
+                        PDF 頁碼範圍: {minPdfPage} ~ {maxPdfPage} (共 {pdfPages.length} 頁)
+                    </p>
+                </div>
+
+                <div className="panel" style={{ background: '#fef3c7', borderLeft: '4px solid #f59e0b', marginBottom: '20px' }}>
+                    <h3 style={{ marginBottom: '10px' }}>💡 使用說明</h3>
+                    <ol style={{ paddingLeft: '20px', lineHeight: '1.8' }}>
+                        <li>左側選擇 JSON 資料（前 5 筆）</li>
+                        <li>右側瀏覽 PDF，找到對應的頁面</li>
+                        <li>設定「JSON page={selectedJson?.page_number || 1} 對應到 PDF page_{selectedPdfPage}」</li>
+                        <li>調整完成後點擊「✅ 確認並儲存」</li>
+                    </ol>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    {/* 左側：JSON 資料選擇 */}
+                    <div className="panel">
+                        <h2>📄 JSON 資料 (前 5 筆)</h2>
+                        <div style={{ marginTop: '10px' }}>
+                            {sampleJsonData.map((item, idx) => (
+                                <div
+                                    key={idx}
+                                    onClick={() => setSelectedJsonIndex(idx)}
+                                    style={{
+                                        padding: '10px',
+                                        marginBottom: '10px',
+                                        border: selectedJsonIndex === idx ? '2px solid #3b82f6' : '1px solid #ddd',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        background: selectedJsonIndex === idx ? '#eff6ff' : 'white'
+                                    }}
+                                >
+                                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '5px', fontWeight: 'bold' }}>
+                                        第 {idx + 1} 筆 (JSON page_number: {item.page_number || 1})
+                                    </p>
+                                    <div style={{
+                                        fontSize: '13px',
+                                        lineHeight: '1.4',
+                                        maxHeight: '60px',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                    }}>
+                                        {item.data?.substring(0, 150)}...
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{
+                            marginTop: '15px',
+                            padding: '15px',
+                            background: '#e0f2fe',
+                            borderRadius: '4px',
+                            textAlign: 'center'
+                        }}>
+                            <p style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
+                                當前設定: JSON page={selectedJson?.page_number || 1} → PDF page_{calculatedPdfPage}
+                            </p>
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
+                                <label style={{ fontSize: '13px' }}>報告起始頁:</label>
+                                <input
+                                    type="number"
+                                    value={previewStartPage}
+                                    onChange={(e) => setPreviewStartPage(parseInt(e.target.value) || 1)}
+                                    style={{
+                                        width: '80px',
+                                        padding: '8px',
+                                        textAlign: 'center',
+                                        border: '2px solid #3b82f6',
+                                        borderRadius: '4px',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold'
+                                    }}
+                                    min={minPdfPage}
+                                    max={maxPdfPage}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 右側：PDF 瀏覽器 */}
+                    <div className="panel">
+                        <h2>📑 PDF 瀏覽器</h2>
+                        <div style={{ marginTop: '10px' }}>
+                            <div style={{
+                                background: '#e0f2fe',
+                                padding: '10px',
+                                borderRadius: '4px',
+                                marginBottom: '10px',
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', marginBottom: '10px' }}>
+                                    <button
+                                        className="btn"
+                                        onClick={() => setSelectedPdfPage(prev => Math.max(minPdfPage, prev - 1))}
+                                        disabled={selectedPdfPage <= minPdfPage}
+                                        style={{ background: '#3b82f6', color: 'white', padding: '8px 16px' }}
+                                    >
+                                        ← 上一頁
+                                    </button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <label style={{ fontSize: '13px' }}>PDF 頁碼:</label>
+                                        <input
+                                            type="number"
+                                            value={selectedPdfPage}
+                                            onChange={(e) => {
+                                                const val = parseInt(e.target.value) || minPdfPage;
+                                                if (val >= minPdfPage && val <= maxPdfPage) {
+                                                    setSelectedPdfPage(val);
+                                                }
+                                            }}
+                                            style={{
+                                                width: '70px',
+                                                padding: '6px',
+                                                textAlign: 'center',
+                                                border: '1px solid #3b82f6',
+                                                borderRadius: '4px',
+                                                fontSize: '14px'
+                                            }}
+                                            min={minPdfPage}
+                                            max={maxPdfPage}
+                                        />
+                                    </div>
+                                    <button
+                                        className="btn"
+                                        onClick={() => setSelectedPdfPage(prev => Math.min(maxPdfPage, prev + 1))}
+                                        disabled={selectedPdfPage >= maxPdfPage}
+                                        style={{ background: '#3b82f6', color: 'white', padding: '8px 16px' }}
+                                    >
+                                        下一頁 →
+                                    </button>
+                                </div>
+                                <button
+                                    className="btn"
+                                    onClick={() => {
+                                        const offset = selectedPdfPage - (selectedJson?.page_number || 1);
+                                        setPreviewStartPage(offset + 1);
+                                    }}
+                                    style={{ background: '#10b981', color: 'white', padding: '8px 16px', fontSize: '13px' }}
+                                >
+                                    ✓ 設定此頁為對應頁
+                                </button>
+                            </div>
+
+                            {pdfUrl ? (
+                                <iframe
+                                    src={pdfUrl}
+                                    style={{
+                                        width: '100%',
+                                        height: '600px',
+                                        border: '2px solid #ddd',
+                                        borderRadius: '4px'
+                                    }}
+                                />
+                            ) : (
+                                <div style={{
+                                    padding: '40px',
+                                    textAlign: 'center',
+                                    background: '#fecaca',
+                                    borderRadius: '4px',
+                                    color: '#b91c1c'
+                                }}>
+                                    ⚠️ 找不到 page_{selectedPdfPage}.pdf
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 底部按鈕 */}
+                <div className="panel" style={{ textAlign: 'center' }}>
+                    <p style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
+                        確認設定：JSON 第 1 頁對應到 PDF page_{previewStartPage}
+                    </p>
+                    <button
+                        className="btn btn-success"
+                        onClick={handleConfirmAlignment}
+                        disabled={isUploading}
+                        style={{ marginRight: '10px', fontSize: '16px', padding: '12px 30px' }}
+                    >
+                        ✅ 確認並儲存 (起始頁 = {previewStartPage})
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={handleCancelAlignment}
+                        disabled={isUploading}
+                        style={{ background: '#6b7280', color: 'white', fontSize: '16px', padding: '12px 30px' }}
+                    >
+                        ❌ 取消
+                    </button>
+                    {uploadProgress && (
+                        <p style={{ marginTop: '15px', color: '#3b82f6' }}>{uploadProgress}</p>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="container">
