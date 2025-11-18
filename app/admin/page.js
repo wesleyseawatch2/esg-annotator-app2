@@ -14,7 +14,6 @@ export default function AdminPage() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
     const [selectedFiles, setSelectedFiles] = useState({ json: null, pdfs: [] });
-    const [startPage, setStartPage] = useState(10);
     const [showAlignmentTool, setShowAlignmentTool] = useState(false);
     const [alignmentData, setAlignmentData] = useState(null);
     const [previewStartPage, setPreviewStartPage] = useState(10);
@@ -356,22 +355,28 @@ ${d.sample_data.map(item =>
                 }
             }
             
-            setUploadProgress('');
-            setIsUploading(false);
-
             const projectName = selectedFiles.json.name.replace('esg_annotation_', '').replace('.json', '');
 
-            // 進入對齊工具
-            setAlignmentData({
+            // 直接儲存到資料庫，使用預設 startPage = 1
+            setUploadProgress('儲存資料到資料庫...');
+            const result = await saveProjectData(user.id, {
                 projectName,
                 jsonData,
-                pageUrlMap
+                pageUrlMap,
+                startPage: 1  // 預設從第 1 頁開始，之後可用「調整對齊」修改
             });
-            const pdfPages = Object.keys(pageUrlMap).map(Number).sort((a, b) => a - b);
-            const minPage = Math.min(...pdfPages);
-            setPreviewStartPage(startPage);
-            setSelectedPdfPage(minPage);
-            setShowAlignmentTool(true);
+
+            setIsUploading(false);
+            setUploadProgress('');
+
+            if (result.success) {
+                setMessage(result.message || '上傳成功！請使用「調整對齊」功能設定正確的頁碼對應。');
+                setSelectedFiles({ json: null, pdfs: [] });
+                if (formRef.current) formRef.current.reset();
+                await loadProjects(user.id);
+            } else {
+                setMessage(`失敗: ${result.error}`);
+            }
         } catch (error) {
             setIsUploading(false);
             setUploadProgress('');
@@ -630,7 +635,8 @@ ${d.sample_data.map(item =>
                 <h2>上傳新專案</h2>
                 <p className="hint">
                     JSON 格式：esg_annotation_專案名.json<br/>
-                    PDF 檔名：專案名_page_X.pdf
+                    PDF 檔名：專案名_page_X.pdf<br/>
+                    <strong>📌 上傳後請使用「調整對齊」功能設定正確的頁碼對應</strong>
                 </p>
                 <form ref={formRef} onSubmit={handleUpload} style={{ marginTop: '15px' }}>
                     <div className="field">
@@ -667,26 +673,6 @@ ${d.sample_data.map(item =>
                         )}
                     </div>
 
-                    <div className="field">
-                        <label>JSON 第 1 頁對應到哪個 PDF？</label>
-                        <input 
-                            type="number" 
-                            min="1"
-                            value={startPage}
-                            onChange={(e) => setStartPage(parseInt(e.target.value) || 1)}
-                            disabled={isUploading}
-                            style={{
-                                width: '100px',
-                                padding: '8px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px'
-                            }}
-                        />
-                        <p className="hint" style={{marginTop: '5px'}}>
-                            例如：JSON page_number=1 要看 page_10.pdf，請輸入 10
-                        </p>
-                    </div>
-                    
                     <button type="submit" className="btn btn-success" disabled={isUploading}>
                         {isUploading ? '上傳中...' : '上傳專案'}
                     </button>
