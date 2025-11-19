@@ -2,14 +2,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getProjectsWithProgress } from '../actions';
-import { deleteProject, saveProjectData, updateProjectOffset, repairProjectPdfs, diagnoseProject, exportProjectAnnotations } from '../adminActions';
+import { getProjectsWithProgress, getAllUsersProgress } from '../actions';
+import { deleteProject, saveProjectData, updateProjectOffset, diagnoseProject, exportProjectAnnotations } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
 
 export default function AdminPage() {
     const [user, setUser] = useState(null);
     const [projects, setProjects] = useState([]);
+    const [allUsersProgress, setAllUsersProgress] = useState([]);
+    const [showProgressView, setShowProgressView] = useState(false);
     const [message, setMessage] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
@@ -40,13 +42,29 @@ export default function AdminPage() {
     }, [router]);
 
     const loadProjects = async (userId) => {
-        const data = await getProjectsWithProgress(userId); 
+        const data = await getProjectsWithProgress(userId);
         if(data.projects) setProjects(data.projects);
+    };
+
+    const loadAllUsersProgress = async () => {
+        const result = await getAllUsersProgress();
+        if (result.success) {
+            setAllUsersProgress(result.data);
+        } else {
+            alert(`無法載入進度資料: ${result.error}`);
+        }
     };
 
     const handleDelete = async (projectId) => {
         if (window.confirm('確定要刪除這個專案嗎？\n\n這將永久移除：\n• 資料庫中的所有資料\n• Vercel Blob 中的所有 PDF 檔案\n• 所有相關的標註記錄\n\n此操作無法復原！')) {
+            setIsUploading(true);
+            setUploadProgress('正在刪除專案資料...');
+
             const result = await deleteProject(user.id, projectId);
+
+            setIsUploading(false);
+            setUploadProgress('');
+
             if (result.success) {
                 alert(result.message || '刪除成功');
                 loadProjects(user.id);
@@ -56,84 +74,6 @@ export default function AdminPage() {
         }
     };
 
-    const handleUpdateOffset = async (projectId, newStartPage) => {
-        const parsed = parseInt(newStartPage, 10);
-        if (isNaN(parsed) || parsed < 1) {
-            alert('請輸入有效的頁碼（≥1）');
-            loadProjects(user.id);
-            return;
-        }
-
-        const offset = parsed - 1;
-        const result = await updateProjectOffset(user.id, projectId, offset);
-        
-        if (result.success) {
-            if (result.message) {
-                alert(result.message);
-            }
-            setProjects(prevProjects => prevProjects.map(p => 
-                p.id === projectId ? { ...p, page_offset: offset } : p
-            ));
-        } else {
-            alert(`更新失敗: ${result.error}`);
-            loadProjects(user.id);
-        }
-    };
-
-    const handleRepairPdfs = async (projectId) => {
-        if (window.confirm('確定要修復此專案的 PDF 對應嗎？')) {
-            const result = await repairProjectPdfs(user.id, projectId);
-            if (result.success) {
-                alert(result.message || '修復成功！');
-                loadProjects(user.id);
-            } else {
-                alert(`修復失敗: ${result.error}`);
-            }
-        }
-    };
-
-    const handleDiagnose = async (projectId) => {
-        const result = await diagnoseProject(user.id, projectId);
-        if (result.success) {
-            const d = result.data;
-            const pdfPages = d.project.pdf_urls ? Object.keys(d.project.pdf_urls).map(Number).sort((a,b) => a-b) : [];
-            const minPage = pdfPages.length > 0 ? Math.min(...pdfPages) : 0;
-            const maxPage = pdfPages.length > 0 ? Math.max(...pdfPages) : 0;
-            
-            const info = `
-═══════════════════════════════════
-專案診斷報告
-═══════════════════════════════════
-
-【專案資訊】
-名稱: ${d.project.name}
-Page Offset: ${d.project.page_offset}
-PDF URLs 數量: ${d.project.pdf_urls_count}
-
-【PDF 頁碼範圍】
-最小頁: ${minPage}
-最大頁: ${maxPage}
-範圍: ${minPage} ~ ${maxPage}
-
-【統計】
-總資料: ${d.stats.total}
-有 URL: ${d.stats.has_url}
-無 URL: ${d.stats.no_url}
-
-【前 5 筆資料】
-${d.sample_data.map(item => 
-  `ID: ${item.id}, page_number: ${item.page_number}, 需要 PDF page: ${item.page_number + (d.project.page_offset || 0)}, URL: ${item.source_url ? '✓' : '✗'}`
-).join('\n')}
-
-【建議】
-若要讓 page_number=1 對應到 page_${minPage}.pdf
-請設定「報告起始頁」= ${minPage}
-            `;
-            alert(info);
-        } else {
-            alert(`診斷失敗: ${result.error}`);
-        }
-    };
 
     const handleExport = async (projectId, projectName) => {
         const result = await exportProjectAnnotations(user.id, projectId);
@@ -333,8 +273,15 @@ ${d.sample_data.map(item =>
         
         try {
             const jsonText = await selectedFiles.json.text();
-            const jsonData = JSON.parse(jsonText);
-            
+            let jsonData = JSON.parse(jsonText);
+
+            // 按照 page_number 排序 JSON 資料
+            jsonData = jsonData.sort((a, b) => {
+                const pageA = parseInt(a.page_number) || 0;
+                const pageB = parseInt(b.page_number) || 0;
+                return pageA - pageB;
+            });
+
             setUploadProgress(`正在上傳 ${selectedFiles.pdfs.length} 個 PDF...`);
             const pageUrlMap = {};
             
@@ -386,6 +333,162 @@ ${d.sample_data.map(item =>
     };
 
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
+
+    // 進度視圖 UI
+    if (showProgressView) {
+        // 整理資料：按專案分組
+        const projectsMap = {};
+        allUsersProgress.forEach(row => {
+            if (!projectsMap[row.project_name]) {
+                projectsMap[row.project_name] = {
+                    projectId: row.project_id,
+                    projectName: row.project_name,
+                    totalTasks: parseInt(row.total_tasks),
+                    users: []
+                };
+            }
+            projectsMap[row.project_name].users.push({
+                userId: row.user_id,
+                username: row.username,
+                role: row.role,
+                completedTasks: parseInt(row.completed_tasks)
+            });
+        });
+
+        const projectsList = Object.values(projectsMap);
+
+        return (
+            <div className="container">
+                <div className="panel" style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h1>📊 所有使用者標註進度</h1>
+                        <button
+                            className="btn"
+                            onClick={() => setShowProgressView(false)}
+                            style={{ background: '#6b7280', color: 'white' }}
+                        >
+                            返回管理頁面
+                        </button>
+                    </div>
+                </div>
+
+                {projectsList.map(project => {
+                    // 計算總體進度
+                    const totalPossibleAnnotations = project.totalTasks * project.users.length;
+                    const totalCompletedAnnotations = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
+                    const overallPercentage = project.totalTasks > 0
+                        ? ((totalCompletedAnnotations / totalPossibleAnnotations) * 100).toFixed(1)
+                        : 0;
+
+                    return (
+                        <div key={project.projectId} className="panel" style={{ marginBottom: '20px' }}>
+                            <h2>{project.projectName}</h2>
+                            <div style={{
+                                background: '#f3f4f6',
+                                padding: '15px',
+                                borderRadius: '8px',
+                                marginBottom: '15px'
+                            }}>
+                                <p style={{ marginBottom: '8px' }}>
+                                    <strong>專案總任務數：</strong>{project.totalTasks}
+                                </p>
+                                <p style={{ marginBottom: '8px' }}>
+                                    <strong>總標註進度：</strong>
+                                    {totalCompletedAnnotations} / {totalPossibleAnnotations} ({overallPercentage}%)
+                                </p>
+                                <div style={{
+                                    background: '#e5e7eb',
+                                    borderRadius: '4px',
+                                    height: '20px',
+                                    overflow: 'hidden',
+                                    marginTop: '10px'
+                                }}>
+                                    <div style={{
+                                        width: `${overallPercentage}%`,
+                                        background: '#3b82f6',
+                                        height: '100%',
+                                        transition: 'width 0.3s'
+                                    }}></div>
+                                </div>
+                            </div>
+
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #ddd', background: '#f9fafb' }}>
+                                        <th style={{ textAlign: 'left', padding: '12px' }}>使用者</th>
+                                        <th style={{ textAlign: 'left', padding: '12px' }}>角色</th>
+                                        <th style={{ textAlign: 'left', padding: '12px' }}>已完成</th>
+                                        <th style={{ textAlign: 'left', padding: '12px' }}>總任務</th>
+                                        <th style={{ textAlign: 'left', padding: '12px' }}>完成率</th>
+                                        <th style={{ textAlign: 'left', padding: '12px', width: '200px' }}>進度條</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {project.users.map(user => {
+                                        const percentage = project.totalTasks > 0
+                                            ? ((user.completedTasks / project.totalTasks) * 100).toFixed(1)
+                                            : 0;
+                                        return (
+                                            <tr key={user.userId} style={{ borderBottom: '1px solid #eee' }}>
+                                                <td style={{ padding: '12px' }}>{user.username}</td>
+                                                <td style={{ padding: '12px' }}>
+                                                    <span style={{
+                                                        padding: '4px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '12px',
+                                                        background: user.role === 'admin' ? '#fef3c7' : '#dbeafe',
+                                                        color: user.role === 'admin' ? '#92400e' : '#1e40af'
+                                                    }}>
+                                                        {user.role}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px', fontWeight: 'bold' }}>{user.completedTasks}</td>
+                                                <td style={{ padding: '12px' }}>{project.totalTasks}</td>
+                                                <td style={{ padding: '12px', fontWeight: 'bold' }}>{percentage}%</td>
+                                                <td style={{ padding: '12px' }}>
+                                                    <div style={{
+                                                        background: '#e5e7eb',
+                                                        borderRadius: '4px',
+                                                        height: '24px',
+                                                        overflow: 'hidden',
+                                                        position: 'relative'
+                                                    }}>
+                                                        <div style={{
+                                                            width: `${percentage}%`,
+                                                            background: percentage >= 100 ? '#10b981' : '#3b82f6',
+                                                            height: '100%',
+                                                            transition: 'width 0.3s'
+                                                        }}></div>
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            top: '50%',
+                                                            left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            fontSize: '12px',
+                                                            fontWeight: 'bold',
+                                                            color: '#1f2937'
+                                                        }}>
+                                                            {percentage}%
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                })}
+
+                {projectsList.length === 0 && (
+                    <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
+                        <p style={{ color: '#6b7280' }}>目前沒有專案資料</p>
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     // 對齊工具 UI
     if (showAlignmentTool && alignmentData) {
@@ -628,7 +731,19 @@ ${d.sample_data.map(item =>
         <div className="container">
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
                 <h1>管理員後台</h1>
-                <button className="btn" onClick={() => router.push('/')}>返回標註</button>
+                <div>
+                    <button
+                        className="btn"
+                        onClick={async () => {
+                            await loadAllUsersProgress();
+                            setShowProgressView(true);
+                        }}
+                        style={{ background: '#3b82f6', color: 'white', marginRight: '10px' }}
+                    >
+                        📊 查看所有人進度
+                    </button>
+                    <button className="btn" onClick={() => router.push('/')}>返回標註</button>
+                </div>
             </div>
 
             <div className="panel">
@@ -695,12 +810,25 @@ ${d.sample_data.map(item =>
             
             <div className="panel" style={{marginTop: '20px'}}>
                 <h2>專案列表</h2>
+                {isUploading && uploadProgress && (
+                    <div style={{
+                        padding: '15px',
+                        marginBottom: '15px',
+                        background: '#eff6ff',
+                        border: '1px solid #3b82f6',
+                        borderRadius: '4px',
+                        color: '#1e40af',
+                        fontWeight: 'bold',
+                        textAlign: 'center'
+                    }}>
+                        {uploadProgress}
+                    </div>
+                )}
                 <table style={{width: '100%', borderCollapse: 'collapse'}}>
                     <thead>
                         <tr style={{borderBottom: '1px solid #ddd'}}>
                             <th style={{textAlign: 'left', padding: '8px'}}>專案名稱</th>
                             <th style={{textAlign: 'left', padding: '8px'}}>總任務</th>
-                            <th style={{textAlign: 'center', padding: '8px'}}>報告起始頁</th>
                             <th style={{textAlign: 'left', padding: '8px'}}>操作</th>
                         </tr>
                     </thead>
@@ -709,21 +837,6 @@ ${d.sample_data.map(item =>
                             <tr key={p.id} style={{borderBottom: '1px solid #eee'}}>
                                 <td style={{padding: '8px'}}>{p.name}</td>
                                 <td style={{padding: '8px'}}>{p.total_tasks}</td>
-                                <td style={{padding: '8px', textAlign: 'center'}}>
-                                    <input 
-                                        type="number"
-                                        defaultValue={p.page_offset !== null && p.page_offset !== undefined ? (p.page_offset + 1) : 1}
-                                        onBlur={(e) => handleUpdateOffset(p.id, e.target.value)}
-                                        style={{
-                                            width: '60px', 
-                                            padding: '4px', 
-                                            textAlign: 'center', 
-                                            border: '1px solid #ccc', 
-                                            borderRadius: '4px'
-                                        }}
-                                        min="1"
-                                    />
-                                </td>
                                 <td style={{padding: '8px'}}>
                                     <button
                                         className="btn"
@@ -737,32 +850,6 @@ ${d.sample_data.map(item =>
                                         }}
                                     >
                                         🎯 調整對齊
-                                    </button>
-                                    <button
-                                        className="btn"
-                                        onClick={() => handleDiagnose(p.id)}
-                                        style={{
-                                            background: '#8b5cf6',
-                                            color: 'white',
-                                            marginRight: '10px',
-                                            fontSize: '12px',
-                                            padding: '6px 12px'
-                                        }}
-                                    >
-                                        診斷
-                                    </button>
-                                    <button
-                                        className="btn"
-                                        onClick={() => handleRepairPdfs(p.id)}
-                                        style={{
-                                            background: '#3b82f6',
-                                            color: 'white',
-                                            marginRight: '10px',
-                                            fontSize: '12px',
-                                            padding: '6px 12px'
-                                        }}
-                                    >
-                                        修復
                                     </button>
                                     <button
                                         className="btn"
@@ -780,9 +867,12 @@ ${d.sample_data.map(item =>
                                     <button
                                         className="btn highlight-btn-clear"
                                         onClick={() => handleDelete(p.id)}
+                                        disabled={isUploading}
                                         style={{
                                             fontSize: '12px',
-                                            padding: '6px 12px'
+                                            padding: '6px 12px',
+                                            opacity: isUploading ? 0.5 : 1,
+                                            cursor: isUploading ? 'not-allowed' : 'pointer'
                                         }}
                                     >
                                         刪除

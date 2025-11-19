@@ -134,7 +134,7 @@ export async function saveAnnotation(data) {
   try {
     // 將字串轉換為陣列（如果是逗號分隔的字串）
     const esgTypeArray = typeof esg_type === 'string' ? esg_type.split(',').filter(Boolean) : esg_type;
-    
+
     await sql`
       INSERT INTO annotations (
         source_data_id, user_id, esg_type, promise_status, promise_string,
@@ -143,7 +143,7 @@ export async function saveAnnotation(data) {
         ${source_data_id}, ${user_id}, ${esgTypeArray}, ${promise_status}, ${promise_string},
         ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', NOW()
       )
-      ON CONFLICT (source_data_id, user_id) 
+      ON CONFLICT (source_data_id, user_id)
       DO UPDATE SET
         esg_type = EXCLUDED.esg_type,
         promise_status = EXCLUDED.promise_status,
@@ -157,6 +157,32 @@ export async function saveAnnotation(data) {
     `;
     revalidatePath('/');
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getAllUsersProgress() {
+  try {
+    const { rows } = await sql`
+      SELECT
+        u.id as user_id,
+        u.username,
+        u.role,
+        p.id as project_id,
+        p.name as project_name,
+        (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
+        (
+          SELECT COUNT(*)
+          FROM annotations a
+          WHERE a.user_id = u.id
+          AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+        ) as completed_tasks
+      FROM users u
+      CROSS JOIN projects p
+      ORDER BY p.name, u.username;
+    `;
+    return { success: true, data: rows };
   } catch (error) {
     return { success: false, error: error.message };
   }
