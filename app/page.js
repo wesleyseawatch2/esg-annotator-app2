@@ -54,7 +54,7 @@ function LoginRegisterScreen({ onLoginSuccess }) {
     <div className="modal" style={{ display: 'block' }}>
       <div className="modal-content">
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <img src="/ntu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto' }} />
+          <img src="/ntpu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto' }} />
         </div>
         <h2>{isLogin ? '登入' : '註冊'}</h2>
         <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="使用者名稱" />
