@@ -83,6 +83,11 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   return (
     <div className="container">
       <div className="panel" style={{ maxWidth: '600px', margin: '50px auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <img src="/ntpu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto', marginBottom: '20px' }} />
+          <h1 style={{ fontSize: '24px', marginBottom: '10px', color: '#1f2937' }}>AI CUP：ESG 報告承諾驗證標註資料收集</h1>
+          <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '20px' }}>AI CUP: ESG Report Promise Validation Annotation Data Collection</p>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>你好, {user.username}!</h2>
             <div>
