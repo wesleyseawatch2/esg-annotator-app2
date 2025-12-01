@@ -150,6 +150,41 @@ export async function saveProjectData(userId, { projectName, jsonData, pageUrlMa
   }
 }
 
+// --- 更新專案名稱 ---
+export async function updateProjectName(userId, projectId, newName) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    if (!newName || !newName.trim()) {
+      return { success: false, error: '專案名稱不能為空' };
+    }
+
+    // 檢查新名稱是否已存在
+    const { rows: existingRows } = await sql`
+      SELECT id FROM projects WHERE name = ${newName.trim()} AND id != ${projectId};
+    `;
+
+    if (existingRows.length > 0) {
+      return { success: false, error: '此專案名稱已存在' };
+    }
+
+    // 更新專案名稱
+    await sql`
+      UPDATE projects
+      SET name = ${newName.trim()}
+      WHERE id = ${projectId};
+    `;
+
+    revalidatePath('/admin');
+    return { success: true, message: '專案名稱已更新' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // --- 更新專案的 page_offset ---
 export async function updateProjectOffset(userId, projectId, newOffset) {
   try {

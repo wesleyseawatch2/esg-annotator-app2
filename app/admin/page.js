@@ -7,7 +7,8 @@ import {
     deleteProject, deleteProjectOnly, saveProjectData, updateProjectOffset,
     diagnoseProject, exportProjectAnnotations, batchUploadGroupData,
     createProjectGroup, getAllGroups, assignUserToGroup, removeUserFromGroup,
-    assignProjectToGroup, getGroupUsers, getAllUsersForAssignment, deleteGroup
+    assignProjectToGroup, getGroupUsers, getAllUsersForAssignment, deleteGroup,
+    updateProjectName
 } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
@@ -31,6 +32,9 @@ export default function AdminPage() {
     const [showBatchResults, setShowBatchResults] = useState(false);
     const [batchResults, setBatchResults] = useState(null);
     const [batchProgress, setBatchProgress] = useState(null);
+    // 編輯專案名稱相關狀態
+    const [editingProjectId, setEditingProjectId] = useState(null);
+    const [editingProjectName, setEditingProjectName] = useState('');
     // 群組管理相關狀態
     const [groups, setGroups] = useState([]);
     const [showGroupManagement, setShowGroupManagement] = useState(false);
@@ -668,6 +672,33 @@ export default function AdminPage() {
             await loadProjects(user.id);
         } else {
             alert(`刪除失敗: ${result.error}`);
+        }
+    };
+
+    const handleStartEditProjectName = (projectId, currentName) => {
+        setEditingProjectId(projectId);
+        setEditingProjectName(currentName);
+    };
+
+    const handleCancelEditProjectName = () => {
+        setEditingProjectId(null);
+        setEditingProjectName('');
+    };
+
+    const handleSaveProjectName = async (projectId) => {
+        if (!editingProjectName.trim()) {
+            alert('專案名稱不能為空');
+            return;
+        }
+
+        const result = await updateProjectName(user.id, projectId, editingProjectName);
+        if (result.success) {
+            alert(result.message);
+            setEditingProjectId(null);
+            setEditingProjectName('');
+            await loadProjects(user.id);
+        } else {
+            alert(`更新失敗: ${result.error}`);
         }
     };
 
@@ -1626,7 +1657,72 @@ export default function AdminPage() {
                     <tbody>
                         {projects.map(p => (
                             <tr key={p.id} style={{borderBottom: '1px solid #eee'}}>
-                                <td style={{padding: '8px'}}>{p.name}</td>
+                                <td style={{padding: '8px'}}>
+                                    {editingProjectId === p.id ? (
+                                        <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
+                                            <input
+                                                type="text"
+                                                value={editingProjectName}
+                                                onChange={(e) => setEditingProjectName(e.target.value)}
+                                                style={{
+                                                    padding: '4px 8px',
+                                                    border: '2px solid #3b82f6',
+                                                    borderRadius: '4px',
+                                                    fontSize: '13px',
+                                                    flex: 1
+                                                }}
+                                                autoFocus
+                                            />
+                                            <button
+                                                onClick={() => handleSaveProjectName(p.id)}
+                                                style={{
+                                                    padding: '4px 8px',
+                                                    background: '#10b981',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                ✓
+                                            </button>
+                                            <button
+                                                onClick={handleCancelEditProjectName}
+                                                style={{
+                                                    padding: '4px 8px',
+                                                    background: '#6b7280',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                ✗
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                            <span>{p.name}</span>
+                                            <button
+                                                onClick={() => handleStartEditProjectName(p.id, p.name)}
+                                                style={{
+                                                    padding: '2px 6px',
+                                                    background: '#3b82f6',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '3px',
+                                                    fontSize: '10px',
+                                                    cursor: 'pointer'
+                                                }}
+                                                title="編輯專案名稱"
+                                            >
+                                                ✏️
+                                            </button>
+                                        </div>
+                                    )}
+                                </td>
                                 <td style={{padding: '8px'}}>
                                     {isMigrated && groups.length > 0 ? (
                                         <select
