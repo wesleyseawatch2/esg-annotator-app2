@@ -2,9 +2,10 @@
 'use server';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
-import { del } from '@vercel/blob';
+import { del, put } from '@vercel/blob';
+import { PDFDocument } from 'pdf-lib';
 
-// --- 刪除專案 ---
+// --- 刪除專案（完全刪除）---
 export async function deleteProject(userId, projectId) {
   try {
     const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
@@ -42,7 +43,39 @@ export async function deleteProject(userId, projectId) {
     revalidatePath('/admin');
     return {
       success: true,
-      message: `專案已刪除（包含 ${deletedBlobCount} 個 PDF 檔案）`
+      message: `專案已完全刪除（包含 ${deletedBlobCount} 個 PDF 檔案）`
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 刪除專案（僅刪除專案記錄，保留資料）---
+export async function deleteProjectOnly(userId, projectId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 檢查專案是否存在
+    const { rows: projectRows } = await sql`
+      SELECT name FROM projects WHERE id = ${projectId};
+    `;
+
+    if (projectRows.length === 0) {
+      return { success: false, error: '專案不存在' };
+    }
+
+    const projectName = projectRows[0].name;
+
+    // 只刪除專案記錄，保留 source_data 和 annotations
+    await sql`DELETE FROM projects WHERE id = ${projectId};`;
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `專案「${projectName}」已刪除（PDF 和標註資料已保留）`
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -336,6 +369,386 @@ export async function exportProjectAnnotations(userId, projectId) {
 
     return { success: true, data: annotations };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ============ 專案群組管理功能 ============
+
+// --- 建立專案群組 ---
+export async function createProjectGroup(userId, groupName, description = '') {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const result = await sql`
+      INSERT INTO project_groups (name, description)
+      VALUES (${groupName}, ${description})
+      RETURNING id, name, description;
+    `;
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `群組「${groupName}」建立成功`,
+      group: result.rows[0]
+    };
+  } catch (error) {
+    if (error.message.includes('unique')) {
+      return { success: false, error: '群組名稱已存在' };
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得所有群組 ---
+export async function getAllGroups(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: groups } = await sql`
+      SELECT
+        pg.id,
+        pg.name,
+        pg.description,
+        pg.created_at,
+        COUNT(DISTINCT p.id) as project_count,
+        COUNT(DISTINCT ugp.user_id) as user_count
+      FROM project_groups pg
+      LEFT JOIN projects p ON pg.id = p.group_id
+      LEFT JOIN user_group_permissions ugp ON pg.id = ugp.group_id
+      GROUP BY pg.id, pg.name, pg.description, pg.created_at
+      ORDER BY pg.created_at DESC;
+    `;
+
+    return { success: true, groups };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 分配使用者到群組 ---
+export async function assignUserToGroup(adminUserId, userId, groupId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${adminUserId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    await sql`
+      INSERT INTO user_group_permissions (user_id, group_id)
+      VALUES (${userId}, ${groupId})
+      ON CONFLICT (user_id, group_id) DO NOTHING;
+    `;
+
+    revalidatePath('/admin');
+    return { success: true, message: '已成功分配使用者到群組' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 從群組移除使用者 ---
+export async function removeUserFromGroup(adminUserId, userId, groupId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${adminUserId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    await sql`
+      DELETE FROM user_group_permissions
+      WHERE user_id = ${userId} AND group_id = ${groupId};
+    `;
+
+    revalidatePath('/admin');
+    return { success: true, message: '已從群組移除使用者' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 分配專案到群組 ---
+export async function assignProjectToGroup(userId, projectId, groupId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 如果 groupId 為 null，則表示移除群組設定
+    if (groupId === null || groupId === '') {
+      await sql`
+        UPDATE projects
+        SET group_id = NULL
+        WHERE id = ${projectId};
+      `;
+      revalidatePath('/');
+      revalidatePath('/admin');
+      return { success: true, message: '已移除專案的群組設定' };
+    }
+
+    await sql`
+      UPDATE projects
+      SET group_id = ${groupId}
+      WHERE id = ${projectId};
+    `;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, message: '已成功分配專案到群組' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得群組的使用者列表 ---
+export async function getGroupUsers(userId, groupId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: users } = await sql`
+      SELECT u.id, u.username, u.role, ugp.created_at as assigned_at
+      FROM users u
+      JOIN user_group_permissions ugp ON u.id = ugp.user_id
+      WHERE ugp.group_id = ${groupId}
+      ORDER BY ugp.created_at DESC;
+    `;
+
+    return { success: true, users };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得所有使用者（用於分配） ---
+export async function getAllUsersForAssignment(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: users } = await sql`
+      SELECT id, username, role
+      FROM users
+      ORDER BY username;
+    `;
+
+    return { success: true, users };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 刪除群組 ---
+export async function deleteGroup(userId, groupId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 刪除群組會自動將關聯專案的 group_id 設為 NULL (ON DELETE SET NULL)
+    // 並刪除所有相關的權限設定 (ON DELETE CASCADE)
+    await sql`DELETE FROM project_groups WHERE id = ${groupId};`;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, message: '群組已刪除' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ============ 原有功能 ============
+
+// --- 批次上傳組別資料（包含 PDF 分頁處理）---
+export async function batchUploadGroupData(userId, formData) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const results = {
+      success: true,
+      totalProjects: 0,
+      successProjects: 0,
+      failedProjects: 0,
+      details: []
+    };
+
+    // 從 formData 取得所有檔案
+    const files = formData.getAll('files');
+
+    if (files.length === 0) {
+      return { success: false, error: '未選擇任何檔案' };
+    }
+
+    // 整理檔案結構：按路徑分組成 { groupName: { companyName: { json, pdfs } } }
+    const groupedData = {};
+
+    for (const file of files) {
+      const webkitPath = file.webkitRelativePath || file.name;
+      const pathParts = webkitPath.split('/').filter(p => p);
+
+      // 支援兩種結構：
+      // 1. 根資料夾/組別/公司資料夾/檔案 (pathParts.length >= 4)
+      // 2. 根資料夾/組別/檔案 (pathParts.length === 3)
+
+      let groupName, companyName;
+
+      if (pathParts.length >= 4) {
+        // 結構：根/組別/公司/檔案
+        groupName = pathParts[1];
+        companyName = pathParts[2];
+      } else if (pathParts.length === 3) {
+        // 結構：根/組別/檔案 - 從檔名提取公司名稱
+        groupName = pathParts[1];
+        const fileName = pathParts[2];
+
+        // 從檔名提取公司識別碼（例如：fubon_2881_esg_data.json -> fubon_2881）
+        const match = fileName.match(/^([^_]+_\d+)/);
+        if (match) {
+          companyName = match[1];
+        } else {
+          // 如果無法匹配，使用檔名（去除副檔名）
+          companyName = fileName.replace(/\.(json|pdf)$/, '');
+        }
+      } else {
+        continue; // 跳過層級不足的檔案
+      }
+
+      if (!groupedData[groupName]) {
+        groupedData[groupName] = {};
+      }
+      if (!groupedData[groupName][companyName]) {
+        groupedData[groupName][companyName] = { json: null, pdfs: [] };
+      }
+
+      if (file.name.endsWith('.json')) {
+        groupedData[groupName][companyName].json = file;
+      } else if (file.name.endsWith('.pdf')) {
+        groupedData[groupName][companyName].pdfs.push(file);
+      }
+    }
+
+    // 處理每個組別的每家公司
+    for (const [groupName, companies] of Object.entries(groupedData)) {
+      for (const [companyName, { json, pdfs }] of Object.entries(companies)) {
+        results.totalProjects++;
+        const projectName = `${groupName}_${companyName}`;
+
+        try {
+          if (!json) {
+            results.failedProjects++;
+            results.details.push({
+              projectName,
+              success: false,
+              error: '找不到 JSON 檔案'
+            });
+            continue;
+          }
+
+          if (pdfs.length === 0) {
+            results.failedProjects++;
+            results.details.push({
+              projectName,
+              success: false,
+              error: '找不到 PDF 檔案'
+            });
+            continue;
+          }
+
+          // 讀取 JSON 資料
+          const jsonText = await json.text();
+          let jsonData = JSON.parse(jsonText);
+
+          // 按照 page_number 排序
+          jsonData = jsonData.sort((a, b) => {
+            const pageA = parseInt(a.page_number) || 0;
+            const pageB = parseInt(b.page_number) || 0;
+            return pageA - pageB;
+          });
+
+          // 處理所有 PDF：分頁並上傳
+          const pageUrlMap = {};
+
+          for (const pdfFile of pdfs) {
+            // 讀取 PDF
+            const pdfArrayBuffer = await pdfFile.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(pdfArrayBuffer);
+            const totalPages = pdfDoc.getPageCount();
+
+            // 分割每一頁
+            for (let i = 0; i < totalPages; i++) {
+              const newPdf = await PDFDocument.create();
+              const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+              newPdf.addPage(copiedPage);
+
+              const pdfBytes = await newPdf.save();
+              const pageNumber = i + 1;
+              const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+              // 上傳到 Vercel Blob（使用公司名稱_page_X.pdf 格式）
+              const fileName = `${companyName}_page_${pageNumber}.pdf`;
+              const { url } = await put(fileName, blob, {
+                access: 'public',
+              });
+
+              pageUrlMap[pageNumber] = url;
+            }
+          }
+
+          // 儲存到資料庫
+          const saveResult = await saveProjectData(userId, {
+            projectName,
+            jsonData,
+            pageUrlMap,
+            startPage: 1
+          });
+
+          if (saveResult.success) {
+            results.successProjects++;
+            results.details.push({
+              projectName,
+              success: true,
+              message: saveResult.message
+            });
+          } else {
+            results.failedProjects++;
+            results.details.push({
+              projectName,
+              success: false,
+              error: saveResult.error
+            });
+          }
+
+        } catch (error) {
+          results.failedProjects++;
+          results.details.push({
+            projectName,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    revalidatePath('/admin');
+    return results;
+
+  } catch (error) {
+    console.error('批次上傳失敗:', error);
     return { success: false, error: error.message };
   }
 }

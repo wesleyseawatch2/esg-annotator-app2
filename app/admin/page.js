@@ -3,9 +3,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getProjectsWithProgress, getAllUsersProgress } from '../actions';
-import { deleteProject, saveProjectData, updateProjectOffset, diagnoseProject, exportProjectAnnotations } from '../adminActions';
+import {
+    deleteProject, deleteProjectOnly, saveProjectData, updateProjectOffset,
+    diagnoseProject, exportProjectAnnotations, batchUploadGroupData,
+    createProjectGroup, getAllGroups, assignUserToGroup, removeUserFromGroup,
+    assignProjectToGroup, getGroupUsers, getAllUsersForAssignment, deleteGroup
+} from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
+import { PDFDocument } from 'pdf-lib';
 
 export default function AdminPage() {
     const [user, setUser] = useState(null);
@@ -21,7 +27,22 @@ export default function AdminPage() {
     const [previewStartPage, setPreviewStartPage] = useState(10);
     const [selectedJsonIndex, setSelectedJsonIndex] = useState(0);
     const [selectedPdfPage, setSelectedPdfPage] = useState(10);
+    const [batchUploadFiles, setBatchUploadFiles] = useState([]);
+    const [showBatchResults, setShowBatchResults] = useState(false);
+    const [batchResults, setBatchResults] = useState(null);
+    const [batchProgress, setBatchProgress] = useState(null);
+    // 群組管理相關狀態
+    const [groups, setGroups] = useState([]);
+    const [showGroupManagement, setShowGroupManagement] = useState(false);
+    const [newGroupName, setNewGroupName] = useState('');
+    const [newGroupDescription, setNewGroupDescription] = useState('');
+    const [selectedGroup, setSelectedGroup] = useState(null);
+    const [groupUsers, setGroupUsers] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
+    const [isMigrated, setIsMigrated] = useState(false);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const formRef = useRef(null);
+    const batchFormRef = useRef(null);
     const router = useRouter();
 
     useEffect(() => {
@@ -56,11 +77,30 @@ export default function AdminPage() {
     };
 
     const handleDelete = async (projectId) => {
-        if (window.confirm('確定要刪除這個專案嗎？\n\n這將永久移除：\n• 資料庫中的所有資料\n• Vercel Blob 中的所有 PDF 檔案\n• 所有相關的標註記錄\n\n此操作無法復原！')) {
+        if (window.confirm('確定要完全刪除這個專案嗎？\n\n這將永久移除：\n• 資料庫中的所有資料\n• Vercel Blob 中的所有 PDF 檔案\n• 所有相關的標註記錄\n\n此操作無法復原！')) {
             setIsUploading(true);
             setUploadProgress('正在刪除專案資料...');
 
             const result = await deleteProject(user.id, projectId);
+
+            setIsUploading(false);
+            setUploadProgress('');
+
+            if (result.success) {
+                alert(result.message || '刪除成功');
+                loadProjects(user.id);
+            } else {
+                alert(`刪除失敗: ${result.error}`);
+            }
+        }
+    };
+
+    const handleDeleteProjectOnly = async (projectId) => {
+        if (window.confirm('確定要刪除專案記錄嗎？\n\n將會保留：\n• ✓ PDF 檔案（Vercel Blob）\n• ✓ 原始資料（source_data）\n• ✓ 標註記錄（annotations）\n\n只會刪除專案記錄，資料可供之後重新導入使用。')) {
+            setIsUploading(true);
+            setUploadProgress('正在刪除專案記錄...');
+
+            const result = await deleteProjectOnly(user.id, projectId);
 
             setIsUploading(false);
             setUploadProgress('');
@@ -138,7 +178,7 @@ export default function AdminPage() {
         setSelectedFiles(prev => ({ ...prev, json: file }));
     };
 
-    const handlePdfFolderChange = (e) => {
+    const handlePdfChange = (e) => {
         const files = Array.from(e.target.files).filter(f => f.name.endsWith('.pdf'));
         setSelectedFiles(prev => ({ ...prev, pdfs: files }));
         setMessage(`已選擇 ${files.length} 個 PDF 檔案`);
@@ -149,8 +189,8 @@ export default function AdminPage() {
 
         // 驗證 previewStartPage 是否為有效整數
         const validatedStartPage = parseInt(previewStartPage, 10);
-        if (isNaN(validatedStartPage) || validatedStartPage < 1) {
-            alert('請輸入有效的起始頁碼（必須是 ≥1 的整數）');
+        if (isNaN(validatedStartPage)) {
+            alert('請輸入有效的起始頁碼（必須是整數）');
             return;
         }
 
@@ -264,13 +304,13 @@ export default function AdminPage() {
         }
 
         if (selectedFiles.pdfs.length === 0) {
-            setMessage('請選擇包含 PDF 的資料夾');
+            setMessage('請選擇 PDF 檔案');
             return;
         }
 
         setIsUploading(true);
         setMessage('');
-        
+
         try {
             const jsonText = await selectedFiles.json.text();
             let jsonData = JSON.parse(jsonText);
@@ -282,29 +322,57 @@ export default function AdminPage() {
                 return pageA - pageB;
             });
 
-            setUploadProgress(`正在上傳 ${selectedFiles.pdfs.length} 個 PDF...`);
-            const pageUrlMap = {};
-            
-            for (let i = 0; i < selectedFiles.pdfs.length; i++) {
-                const pdfFile = selectedFiles.pdfs[i];
-                const pageMatch = pdfFile.name.match(/page_(\d+)\.pdf$/);
-                
-                if (pageMatch) {
-                    const pageNumber = parseInt(pageMatch[1], 10);
-                    setUploadProgress(`上傳: ${i + 1}/${selectedFiles.pdfs.length} - ${pdfFile.name}`);
-                    
-                    const blob = await upload(pdfFile.name, pdfFile, {
-                        access: 'public',
-                        handleUploadUrl: '/api/upload',
-                    });
-                    
-                    pageUrlMap[pageNumber] = blob.url;
-                }
-            }
-            
+            // 從 JSON 檔名提取專案名稱
             const projectName = selectedFiles.json.name.replace('esg_annotation_', '').replace('.json', '');
 
-            // 直接儲存到資料庫，使用預設 startPage = 1
+            setUploadProgress(`正在處理 ${selectedFiles.pdfs.length} 個 PDF 檔案...`);
+            const pageUrlMap = {};
+            let totalPages = 0;
+
+            // 處理每個 PDF：分割並上傳
+            const skippedFiles = [];
+            for (let pdfIndex = 0; pdfIndex < selectedFiles.pdfs.length; pdfIndex++) {
+                const pdfFile = selectedFiles.pdfs[pdfIndex];
+
+                setUploadProgress(`正在分割 PDF ${pdfIndex + 1}/${selectedFiles.pdfs.length}: ${pdfFile.name}`);
+
+                try {
+                    // 讀取 PDF
+                    const pdfArrayBuffer = await pdfFile.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(pdfArrayBuffer);
+                    const pageCount = pdfDoc.getPageCount();
+
+                    // 分割每一頁
+                    for (let i = 0; i < pageCount; i++) {
+                        const newPdf = await PDFDocument.create();
+                        const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+                        newPdf.addPage(copiedPage);
+
+                        const pdfBytes = await newPdf.save();
+                        const pageNumber = totalPages + i + 1;
+                        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+                        setUploadProgress(`上傳頁面 ${pageNumber}...`);
+
+                        // 上傳單頁 PDF
+                        const fileName = `${projectName}_page_${pageNumber}.pdf`;
+                        const uploadedBlob = await upload(fileName, blob, {
+                            access: 'public',
+                            handleUploadUrl: '/api/upload',
+                        });
+
+                        pageUrlMap[pageNumber] = uploadedBlob.url;
+                    }
+
+                    totalPages += pageCount;
+                } catch (pdfError) {
+                    console.error(`處理 PDF ${pdfFile.name} 時發生錯誤:`, pdfError);
+                    skippedFiles.push(`${pdfFile.name} (${pdfError.message})`);
+                    // 繼續處理其他 PDF
+                }
+            }
+
+            // 儲存到資料庫
             setUploadProgress('儲存資料到資料庫...');
             const result = await saveProjectData(user.id, {
                 projectName,
@@ -317,7 +385,12 @@ export default function AdminPage() {
             setUploadProgress('');
 
             if (result.success) {
-                setMessage(result.message || '上傳成功！請使用「調整對齊」功能設定正確的頁碼對應。');
+                let message = `上傳成功！已處理 ${totalPages} 頁 PDF。`;
+                if (skippedFiles.length > 0) {
+                    message += `\n\n⚠️ 跳過以下無效檔案：\n${skippedFiles.join('\n')}`;
+                }
+                message += '\n\n請使用「調整對齊」功能設定正確的頁碼對應。';
+                setMessage(message);
                 setSelectedFiles({ json: null, pdfs: [] });
                 if (formRef.current) formRef.current.reset();
                 await loadProjects(user.id);
@@ -329,6 +402,272 @@ export default function AdminPage() {
             setUploadProgress('');
             setMessage(`錯誤: ${error.message}`);
             console.error('Upload error:', error);
+        }
+    };
+
+    const handleBatchFolderChange = (event) => {
+        const files = Array.from(event.target.files);
+        setBatchUploadFiles(files);
+    };
+
+    const handleBatchUpload = async (event) => {
+        event.preventDefault();
+        if (!user) return;
+
+        if (batchUploadFiles.length === 0) {
+            setMessage('請選擇包含多組資料的資料夾');
+            return;
+        }
+
+        setIsUploading(true);
+        setMessage('');
+        setUploadProgress('準備上傳...');
+        setShowBatchResults(false);
+        setBatchProgress({ current: 0, total: 0, projectName: '', currentPage: 0, totalPages: 0 });
+
+        try {
+            const formData = new FormData();
+            formData.append('userId', user.id);
+            batchUploadFiles.forEach(file => {
+                formData.append('files', file);
+            });
+
+            const response = await fetch('/api/batch-upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const details = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = JSON.parse(line.slice(6));
+
+                        switch (data.type) {
+                            case 'start':
+                                setBatchProgress({
+                                    current: 0,
+                                    total: data.totalProjects,
+                                    projectName: '',
+                                    currentPage: 0,
+                                    totalPages: 0
+                                });
+                                setUploadProgress(data.message);
+                                break;
+
+                            case 'progress':
+                                setBatchProgress(prev => ({
+                                    ...prev,
+                                    current: data.current,
+                                    total: data.total,
+                                    projectName: data.projectName
+                                }));
+                                setUploadProgress(data.message);
+                                break;
+
+                            case 'processing-pdf':
+                                setUploadProgress(`${data.projectName}: ${data.message}`);
+                                break;
+
+                            case 'uploading-page':
+                                setBatchProgress(prev => ({
+                                    ...prev,
+                                    currentPage: data.currentPage,
+                                    totalPages: data.totalPages
+                                }));
+                                setUploadProgress(`${data.projectName}: ${data.message}`);
+                                break;
+
+                            case 'saving-database':
+                                setUploadProgress(`${data.projectName}: ${data.message}`);
+                                break;
+
+                            case 'project-success':
+                                details.push({ projectName: data.projectName, success: true, message: data.message });
+                                break;
+
+                            case 'project-failed':
+                                details.push({ projectName: data.projectName, success: false, error: data.error });
+                                break;
+
+                            case 'complete':
+                                setBatchResults({
+                                    success: true,
+                                    totalProjects: data.totalProjects,
+                                    successProjects: data.successProjects,
+                                    failedProjects: data.failedProjects,
+                                    details: data.details
+                                });
+                                setShowBatchResults(true);
+                                setBatchUploadFiles([]);
+                                if (batchFormRef.current) batchFormRef.current.reset();
+                                await loadProjects(user.id);
+                                break;
+
+                            case 'error':
+                                setMessage(`錯誤: ${data.message}`);
+                                break;
+                        }
+                    }
+                }
+            }
+
+            setIsUploading(false);
+            setUploadProgress('');
+            setBatchProgress(null);
+
+        } catch (error) {
+            setIsUploading(false);
+            setUploadProgress('');
+            setBatchProgress(null);
+            setMessage(`錯誤: ${error.message}`);
+            console.error('Batch upload error:', error);
+        }
+    };
+
+    // ========== 群組管理功能 ==========
+
+    const handleRunMigration = async () => {
+        if (!confirm('確定要執行資料庫遷移嗎？\n這將建立專案群組和權限相關的資料表。')) return;
+
+        setIsUploading(true);
+        setUploadProgress('正在執行資料庫遷移...');
+
+        try {
+            const response = await fetch('/api/migrate-groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert(result.message);
+                setIsMigrated(true);
+                await loadGroups();
+            } else {
+                alert(`遷移失敗: ${result.error}`);
+            }
+        } catch (error) {
+            alert(`遷移失敗: ${error.message}`);
+        } finally {
+            setIsUploading(false);
+            setUploadProgress('');
+        }
+    };
+
+    const loadGroups = async () => {
+        try {
+            const result = await getAllGroups(user.id);
+            if (result.success) {
+                setGroups(result.groups);
+                setIsMigrated(true);
+            }
+        } catch (error) {
+            console.error('載入群組失敗:', error);
+        }
+    };
+
+    const loadAllUsersForGroup = async () => {
+        setIsLoadingUsers(true);
+        try {
+            const result = await getAllUsersForAssignment(user.id);
+            console.log('getAllUsersForAssignment result:', result);
+            if (result.success) {
+                setAllUsers(result.users);
+                console.log('載入使用者成功:', result.users);
+            } else {
+                console.error('載入使用者失敗:', result.error);
+                alert(`載入使用者失敗: ${result.error}`);
+                setAllUsers([]);
+            }
+        } catch (error) {
+            console.error('載入使用者發生錯誤:', error);
+            alert(`載入使用者發生錯誤: ${error.message}`);
+            setAllUsers([]);
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+
+    const handleCreateGroup = async (e) => {
+        e.preventDefault();
+        if (!newGroupName.trim()) return;
+
+        const result = await createProjectGroup(user.id, newGroupName, newGroupDescription);
+        if (result.success) {
+            alert(result.message);
+            setNewGroupName('');
+            setNewGroupDescription('');
+            await loadGroups();
+        } else {
+            alert(`建立失敗: ${result.error}`);
+        }
+    };
+
+    const handleSelectGroup = async (group) => {
+        setSelectedGroup(group);
+        const result = await getGroupUsers(user.id, group.id);
+        if (result.success) {
+            setGroupUsers(result.users);
+        }
+        await loadAllUsersForGroup();
+    };
+
+    const handleAssignUser = async (groupId, userId) => {
+        const result = await assignUserToGroup(user.id, userId, groupId);
+        if (result.success) {
+            alert(result.message);
+            await handleSelectGroup(selectedGroup);
+        } else {
+            alert(`分配失敗: ${result.error}`);
+        }
+    };
+
+    const handleRemoveUser = async (groupId, userId) => {
+        if (!confirm('確定要從群組移除此使用者嗎？')) return;
+        const result = await removeUserFromGroup(user.id, userId, groupId);
+        if (result.success) {
+            alert(result.message);
+            await handleSelectGroup(selectedGroup);
+        } else {
+            alert(`移除失敗: ${result.error}`);
+        }
+    };
+
+    const handleAssignProjectToGroup = async (projectId, groupId) => {
+        const result = await assignProjectToGroup(user.id, projectId, groupId);
+        if (result.success) {
+            alert(result.message);
+            await loadProjects(user.id);
+            await loadGroups();
+        } else {
+            alert(`分配失敗: ${result.error}`);
+        }
+    };
+
+    const handleDeleteGroup = async (groupId) => {
+        if (!confirm('確定要刪除此群組嗎？\n群組中的專案將變為無群組狀態。')) return;
+        const result = await deleteGroup(user.id, groupId);
+        if (result.success) {
+            alert(result.message);
+            setSelectedGroup(null);
+            await loadGroups();
+            await loadProjects(user.id);
+        } else {
+            alert(`刪除失敗: ${result.error}`);
         }
     };
 
@@ -582,16 +921,16 @@ export default function AdminPage() {
                                     value={previewStartPage}
                                     onChange={(e) => {
                                         const val = e.target.value;
-                                        // 只允許純數字輸入
-                                        if (val === '' || /^\d+$/.test(val)) {
-                                            setPreviewStartPage(parseInt(val) || 1);
+                                        // 允許負號、數字和空字串
+                                        if (val === '' || val === '-' || /^-?\d+$/.test(val)) {
+                                            setPreviewStartPage(val === '' || val === '-' ? val : parseInt(val));
                                         }
                                     }}
                                     onBlur={(e) => {
-                                        // 失焦時確保值在範圍內
-                                        const val = parseInt(e.target.value);
-                                        if (isNaN(val) || val < 1) {
-                                            setPreviewStartPage(1);
+                                        // 失焦時確保值是有效數字
+                                        const val = e.target.value;
+                                        if (val === '' || val === '-') {
+                                            setPreviewStartPage(0);
                                         }
                                     }}
                                     style={{
@@ -735,6 +1074,18 @@ export default function AdminPage() {
                     <button
                         className="btn"
                         onClick={async () => {
+                            setShowGroupManagement(!showGroupManagement);
+                            if (!showGroupManagement) {
+                                await loadGroups();
+                            }
+                        }}
+                        style={{ background: '#8b5cf6', color: 'white', marginRight: '10px' }}
+                    >
+                        🔐 {showGroupManagement ? '關閉' : '開啟'}群組管理
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={async () => {
                             await loadAllUsersProgress();
                             setShowProgressView(true);
                         }}
@@ -746,12 +1097,252 @@ export default function AdminPage() {
                 </div>
             </div>
 
+            {/* 群組管理區塊 */}
+            {showGroupManagement && (
+                <div className="panel" style={{marginBottom: '20px', background: '#faf5ff', borderLeft: '4px solid #8b5cf6'}}>
+                    <h2>🔐 專案群組管理</h2>
+
+                    {/* 資料庫遷移按鈕 */}
+                    {!isMigrated && (
+                        <div style={{
+                            padding: '15px',
+                            marginBottom: '20px',
+                            background: '#fff7ed',
+                            border: '2px solid #f59e0b',
+                            borderRadius: '8px'
+                        }}>
+                            <p style={{marginBottom: '10px', color: '#92400e'}}>
+                                <strong>⚠️ 首次使用需要執行資料庫遷移</strong>
+                            </p>
+                            <p style={{marginBottom: '15px', fontSize: '14px', color: '#92400e'}}>
+                                這將建立專案群組和使用者權限相關的資料表
+                            </p>
+                            <button
+                                className="btn"
+                                onClick={handleRunMigration}
+                                disabled={isUploading}
+                                style={{background: '#f59e0b', color: 'white'}}
+                            >
+                                執行資料庫遷移
+                            </button>
+                        </div>
+                    )}
+
+                    {isMigrated && (
+                        <>
+                            {/* 建立新群組 */}
+                            <div style={{marginBottom: '30px', padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                <h3 style={{marginBottom: '15px'}}>建立新群組</h3>
+                                <form onSubmit={handleCreateGroup}>
+                                    <div style={{display: 'grid', gap: '10px', marginBottom: '15px'}}>
+                                        <div>
+                                            <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>群組名稱 *</label>
+                                            <input
+                                                type="text"
+                                                value={newGroupName}
+                                                onChange={(e) => setNewGroupName(e.target.value)}
+                                                required
+                                                style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>描述</label>
+                                            <textarea
+                                                value={newGroupDescription}
+                                                onChange={(e) => setNewGroupDescription(e.target.value)}
+                                                rows={2}
+                                                style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                            />
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="btn" style={{background: '#8b5cf6', color: 'white'}}>
+                                        ➕ 建立群組
+                                    </button>
+                                </form>
+                            </div>
+
+                            {/* 群組列表和管理 */}
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+                                {/* 左側：群組列表 */}
+                                <div style={{padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                    <h3 style={{marginBottom: '15px'}}>群組列表</h3>
+                                    {groups.length === 0 ? (
+                                        <p style={{color: '#6b7280', fontSize: '14px'}}>尚無群組</p>
+                                    ) : (
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                            {groups.map(group => (
+                                                <div
+                                                    key={group.id}
+                                                    style={{
+                                                        padding: '12px',
+                                                        border: selectedGroup?.id === group.id ? '2px solid #8b5cf6' : '1px solid #e5e7eb',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        background: selectedGroup?.id === group.id ? '#f3e8ff' : 'white',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onClick={() => handleSelectGroup(group)}
+                                                >
+                                                    <div style={{fontWeight: 'bold', marginBottom: '5px'}}>{group.name}</div>
+                                                    {group.description && (
+                                                        <div style={{fontSize: '13px', color: '#6b7280', marginBottom: '8px'}}>
+                                                            {group.description}
+                                                        </div>
+                                                    )}
+                                                    <div style={{fontSize: '12px', color: '#9ca3af'}}>
+                                                        👥 {group.user_count} 使用者 | 📁 {group.project_count} 專案
+                                                    </div>
+                                                    {selectedGroup?.id === group.id && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteGroup(group.id);
+                                                            }}
+                                                            style={{
+                                                                marginTop: '10px',
+                                                                padding: '4px 8px',
+                                                                background: '#ef4444',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                fontSize: '12px',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            🗑️ 刪除群組
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 右側：群組使用者管理 */}
+                                <div style={{padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                    <h3 style={{marginBottom: '15px'}}>
+                                        {selectedGroup ? `管理「${selectedGroup.name}」的使用者` : '請選擇群組'}
+                                    </h3>
+                                    {selectedGroup ? (
+                                        <>
+                                            {/* 已分配的使用者 */}
+                                            <div style={{marginBottom: '20px'}}>
+                                                <h4 style={{fontSize: '14px', marginBottom: '10px', color: '#374151'}}>已分配使用者</h4>
+                                                {groupUsers.length === 0 ? (
+                                                    <p style={{fontSize: '13px', color: '#9ca3af'}}>尚無使用者</p>
+                                                ) : (
+                                                    <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                                                        {groupUsers.map(user => (
+                                                            <div
+                                                                key={user.id}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    padding: '8px',
+                                                                    background: '#f9fafb',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '13px'
+                                                                }}
+                                                            >
+                                                                <span>
+                                                                    {user.username}
+                                                                    <span style={{color: '#9ca3af', marginLeft: '8px', fontSize: '11px'}}>
+                                                                        ({user.role})
+                                                                    </span>
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => handleRemoveUser(selectedGroup.id, user.id)}
+                                                                    style={{
+                                                                        padding: '2px 6px',
+                                                                        background: '#ef4444',
+                                                                        color: 'white',
+                                                                        border: 'none',
+                                                                        borderRadius: '3px',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    移除
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* 新增使用者 */}
+                                            <div>
+                                                <h4 style={{fontSize: '14px', marginBottom: '10px', color: '#374151'}}>新增使用者</h4>
+                                                {isLoadingUsers ? (
+                                                    <p style={{fontSize: '13px', color: '#9ca3af'}}>載入中...</p>
+                                                ) : allUsers.length === 0 ? (
+                                                    <p style={{fontSize: '13px', color: '#ef4444'}}>無法載入使用者列表</p>
+                                                ) : allUsers.filter(u => !groupUsers.find(gu => gu.id === u.id)).length === 0 ? (
+                                                    <p style={{fontSize: '13px', color: '#9ca3af'}}>所有使用者都已加入此群組</p>
+                                                ) : (
+                                                    <div style={{display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflow: 'auto'}}>
+                                                        {allUsers
+                                                            .filter(u => !groupUsers.find(gu => gu.id === u.id))
+                                                            .map(user => (
+                                                                <div
+                                                                    key={user.id}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                        padding: '8px',
+                                                                        background: '#f9fafb',
+                                                                        borderRadius: '4px',
+                                                                        fontSize: '13px'
+                                                                    }}
+                                                                >
+                                                                    <span>
+                                                                        {user.username}
+                                                                        <span style={{
+                                                                            color: '#9ca3af',
+                                                                            marginLeft: '8px',
+                                                                            fontSize: '11px'
+                                                                        }}>
+                                                                            ({user.role})
+                                                                        </span>
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => handleAssignUser(selectedGroup.id, user.id)}
+                                                                        style={{
+                                                                            padding: '2px 6px',
+                                                                            background: '#10b981',
+                                                                            color: 'white',
+                                                                            border: 'none',
+                                                                            borderRadius: '3px',
+                                                                            fontSize: '11px',
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                    >
+                                                                        ➕ 新增
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p style={{fontSize: '13px', color: '#9ca3af'}}>請從左側選擇一個群組來管理使用者</p>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
             <div className="panel">
-                <h2>上傳新專案</h2>
+                <h2>上傳新專案（支援完整 PDF 自動分頁）</h2>
                 <p className="hint">
-                    JSON 格式：esg_annotation_專案名.json<br/>
-                    PDF 檔名：專案名_page_X.pdf<br/>
-                    <strong>📌 上傳後請使用「調整對齊」功能設定正確的頁碼對應</strong>
+                    <strong>📄 JSON 格式：</strong>esg_annotation_專案名.json<br/>
+                    <strong>📑 PDF 檔案：</strong>選擇完整 PDF（系統會自動分割成單頁並上傳）<br/>
+                    <strong>📌 提示：</strong>上傳後請使用「調整對齊」功能設定正確的頁碼對應
                 </p>
                 <form ref={formRef} onSubmit={handleUpload} style={{ marginTop: '15px' }}>
                     <div className="field">
@@ -771,19 +1362,18 @@ export default function AdminPage() {
                     </div>
                     
                     <div className="field">
-                        <label>PDF 資料夾</label>
-                        <input 
-                            type="file" 
-                            webkitdirectory="true"
-                            directory="true"
+                        <label>PDF 檔案（支援多選，會自動分頁）</label>
+                        <input
+                            type="file"
+                            accept=".pdf"
                             multiple
-                            onChange={handlePdfFolderChange}
-                            required 
-                            disabled={isUploading} 
+                            onChange={handlePdfChange}
+                            required
+                            disabled={isUploading}
                         />
                         {selectedFiles.pdfs.length > 0 && (
                             <p className="hint" style={{marginTop: '5px', color: 'green'}}>
-                                ✓ {selectedFiles.pdfs.length} 個 PDF
+                                ✓ {selectedFiles.pdfs.length} 個 PDF 檔案（將自動分割成單頁）
                             </p>
                         )}
                     </div>
@@ -807,7 +1397,207 @@ export default function AdminPage() {
                     )}
                 </form>
             </div>
-            
+
+            <div className="panel" style={{marginTop: '20px', background: '#f0fdf4', borderLeft: '4px solid #10b981'}}>
+                <h2>📦 批次上傳組別資料（含 PDF 自動分頁）</h2>
+                <p className="hint" style={{marginBottom: '10px'}}>
+                    <strong>資料夾結構：</strong><br/>
+                    根資料夾/<br/>
+                    　├─ 組別1/<br/>
+                    　│　├─ 公司A/ (內含 .json 和 .pdf)<br/>
+                    　│　└─ 公司B/ (內含 .json 和 .pdf)<br/>
+                    　├─ 組別2/<br/>
+                    　│　└─ 公司C/ (內含 .json 和 .pdf)<br/>
+                    　└─ ...<br/>
+                    <br/>
+                    <strong>功能說明：</strong><br/>
+                    • 自動將 PDF 分割成單頁並上傳<br/>
+                    • 專案名稱格式：組別名稱_公司名稱<br/>
+                    • 自動建立頁碼對應關係<br/>
+                    • 支援多個 PDF 檔案（會合併所有頁面）
+                </p>
+                <form ref={batchFormRef} onSubmit={handleBatchUpload} style={{ marginTop: '15px' }}>
+                    <div className="field">
+                        <label>選擇根資料夾（包含多個組別）</label>
+                        <input
+                            type="file"
+                            webkitdirectory="true"
+                            directory="true"
+                            multiple
+                            onChange={handleBatchFolderChange}
+                            required
+                            disabled={isUploading}
+                        />
+                        {batchUploadFiles.length > 0 && (
+                            <p className="hint" style={{marginTop: '5px', color: 'green'}}>
+                                ✓ 已選擇 {batchUploadFiles.length} 個檔案
+                            </p>
+                        )}
+                    </div>
+
+                    <button type="submit" className="btn" style={{background: '#10b981', color: 'white'}} disabled={isUploading}>
+                        {isUploading ? '批次上傳中...' : '🚀 開始批次上傳'}
+                    </button>
+                </form>
+
+                {isUploading && batchProgress && batchProgress.total > 0 && (
+                    <div style={{
+                        marginTop: '20px',
+                        padding: '20px',
+                        background: 'white',
+                        borderRadius: '8px',
+                        border: '2px solid #10b981'
+                    }}>
+                        <h3 style={{marginBottom: '15px', color: '#10b981'}}>⏳ 上傳進度</h3>
+
+                        {/* 整體專案進度 */}
+                        <div style={{marginBottom: '20px'}}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
+                                <span style={{fontWeight: 'bold'}}>專案進度</span>
+                                <span style={{color: '#10b981', fontWeight: 'bold'}}>
+                                    {batchProgress.current} / {batchProgress.total}
+                                </span>
+                            </div>
+                            <div style={{
+                                width: '100%',
+                                height: '30px',
+                                background: '#e5e7eb',
+                                borderRadius: '15px',
+                                overflow: 'hidden',
+                                position: 'relative'
+                            }}>
+                                <div style={{
+                                    width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                                    height: '100%',
+                                    background: 'linear-gradient(90deg, #10b981, #059669)',
+                                    transition: 'width 0.3s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'white',
+                                    fontWeight: 'bold',
+                                    fontSize: '14px'
+                                }}>
+                                    {Math.round((batchProgress.current / batchProgress.total) * 100)}%
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 當前專案資訊 */}
+                        {batchProgress.projectName && (
+                            <div style={{
+                                padding: '12px',
+                                background: '#f0fdf4',
+                                borderRadius: '6px',
+                                marginBottom: '15px'
+                            }}>
+                                <p style={{margin: 0, fontWeight: 'bold', color: '#065f46'}}>
+                                    正在處理：{batchProgress.projectName}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* PDF 頁面進度 */}
+                        {batchProgress.totalPages > 0 && (
+                            <div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
+                                    <span style={{fontSize: '14px'}}>PDF 頁面上傳</span>
+                                    <span style={{fontSize: '14px', color: '#059669'}}>
+                                        {batchProgress.currentPage} / {batchProgress.totalPages}
+                                    </span>
+                                </div>
+                                <div style={{
+                                    width: '100%',
+                                    height: '20px',
+                                    background: '#e5e7eb',
+                                    borderRadius: '10px',
+                                    overflow: 'hidden'
+                                }}>
+                                    <div style={{
+                                        width: `${(batchProgress.currentPage / batchProgress.totalPages) * 100}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #34d399, #10b981)',
+                                        transition: 'width 0.3s ease'
+                                    }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 狀態訊息 */}
+                        {uploadProgress && (
+                            <p style={{
+                                marginTop: '15px',
+                                padding: '10px',
+                                background: '#eff6ff',
+                                borderRadius: '4px',
+                                color: '#1e40af',
+                                fontSize: '14px',
+                                textAlign: 'center',
+                                margin: '15px 0 0 0'
+                            }}>
+                                {uploadProgress}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {showBatchResults && batchResults && (
+                    <div style={{
+                        marginTop: '20px',
+                        padding: '15px',
+                        background: 'white',
+                        borderRadius: '8px',
+                        border: '1px solid #d1d5db'
+                    }}>
+                        <h3 style={{marginBottom: '15px'}}>📊 批次上傳結果</h3>
+                        <div style={{marginBottom: '15px'}}>
+                            <p><strong>總專案數：</strong>{batchResults.totalProjects}</p>
+                            <p style={{color: '#10b981'}}><strong>成功：</strong>{batchResults.successProjects}</p>
+                            <p style={{color: '#ef4444'}}><strong>失敗：</strong>{batchResults.failedProjects}</p>
+                        </div>
+                        <div style={{maxHeight: '300px', overflow: 'auto'}}>
+                            <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '14px'}}>
+                                <thead>
+                                    <tr style={{borderBottom: '2px solid #ddd', background: '#f9fafb'}}>
+                                        <th style={{textAlign: 'left', padding: '8px'}}>專案名稱</th>
+                                        <th style={{textAlign: 'left', padding: '8px'}}>狀態</th>
+                                        <th style={{textAlign: 'left', padding: '8px'}}>訊息</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {batchResults.details.map((detail, idx) => (
+                                        <tr key={idx} style={{borderBottom: '1px solid #eee'}}>
+                                            <td style={{padding: '8px'}}>{detail.projectName}</td>
+                                            <td style={{padding: '8px'}}>
+                                                <span style={{
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    background: detail.success ? '#d1fae5' : '#fee2e2',
+                                                    color: detail.success ? '#065f46' : '#991b1b',
+                                                    fontSize: '12px'
+                                                }}>
+                                                    {detail.success ? '✓ 成功' : '✗ 失敗'}
+                                                </span>
+                                            </td>
+                                            <td style={{padding: '8px', fontSize: '13px'}}>
+                                                {detail.success ? detail.message : detail.error}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button
+                            className="btn"
+                            onClick={() => setShowBatchResults(false)}
+                            style={{marginTop: '15px', background: '#6b7280', color: 'white'}}
+                        >
+                            關閉結果
+                        </button>
+                    </div>
+                )}
+            </div>
+
             <div className="panel" style={{marginTop: '20px'}}>
                 <h2>專案列表</h2>
                 {isUploading && uploadProgress && (
@@ -828,6 +1618,7 @@ export default function AdminPage() {
                     <thead>
                         <tr style={{borderBottom: '1px solid #ddd'}}>
                             <th style={{textAlign: 'left', padding: '8px'}}>專案名稱</th>
+                            <th style={{textAlign: 'left', padding: '8px'}}>所屬群組</th>
                             <th style={{textAlign: 'left', padding: '8px'}}>總任務</th>
                             <th style={{textAlign: 'left', padding: '8px'}}>操作</th>
                         </tr>
@@ -836,6 +1627,30 @@ export default function AdminPage() {
                         {projects.map(p => (
                             <tr key={p.id} style={{borderBottom: '1px solid #eee'}}>
                                 <td style={{padding: '8px'}}>{p.name}</td>
+                                <td style={{padding: '8px'}}>
+                                    {isMigrated && groups.length > 0 ? (
+                                        <select
+                                            value={p.group_id || ''}
+                                            onChange={(e) => handleAssignProjectToGroup(p.id, e.target.value || null)}
+                                            style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #d1d5db',
+                                                fontSize: '12px',
+                                                background: p.group_id ? '#f3e8ff' : 'white'
+                                            }}
+                                        >
+                                            <option value="">無群組</option>
+                                            {groups.map(g => (
+                                                <option key={g.id} value={g.id}>{g.name}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <span style={{fontSize: '12px', color: '#9ca3af'}}>
+                                            {p.group_name || '無群組'}
+                                        </span>
+                                    )}
+                                </td>
                                 <td style={{padding: '8px'}}>{p.total_tasks}</td>
                                 <td style={{padding: '8px'}}>
                                     <button
@@ -865,6 +1680,23 @@ export default function AdminPage() {
                                         📥 匯出
                                     </button>
                                     <button
+                                        className="btn"
+                                        onClick={() => handleDeleteProjectOnly(p.id)}
+                                        disabled={isUploading}
+                                        style={{
+                                            background: '#f59e0b',
+                                            color: 'white',
+                                            marginRight: '10px',
+                                            fontSize: '12px',
+                                            padding: '6px 12px',
+                                            opacity: isUploading ? 0.5 : 1,
+                                            cursor: isUploading ? 'not-allowed' : 'pointer'
+                                        }}
+                                        title="僅刪除專案記錄，保留 PDF 和標註資料"
+                                    >
+                                        🗑️ 軟刪除
+                                    </button>
+                                    <button
                                         className="btn highlight-btn-clear"
                                         onClick={() => handleDelete(p.id)}
                                         disabled={isUploading}
@@ -874,8 +1706,9 @@ export default function AdminPage() {
                                             opacity: isUploading ? 0.5 : 1,
                                             cursor: isUploading ? 'not-allowed' : 'pointer'
                                         }}
+                                        title="完全刪除專案、PDF 和所有資料"
                                     >
-                                        刪除
+                                        🗑️ 完全刪除
                                     </button>
                                 </td>
                             </tr>

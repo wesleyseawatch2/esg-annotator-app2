@@ -34,21 +34,60 @@ export async function loginUser(username, password) {
 
 export async function getProjectsWithProgress(userId) {
   try {
-    const { rows } = await sql`
-      SELECT
-        p.id,
-        p.name,
-        p.page_offset,
-        (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
-        (
-          SELECT COUNT(*)
-          FROM annotations a
-          WHERE a.user_id = ${userId}
-          AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
-        ) as completed_tasks
-      FROM projects p
-      ORDER BY p.name;
-    `;
+    // 檢查使用者角色和帳號
+    const { rows: userRows } = await sql`SELECT role, username FROM users WHERE id = ${userId};`;
+    const isAdmin = userRows.length > 0 && userRows[0].role === 'admin';
+    const isSuperAdmin = userRows.length > 0 && userRows[0].username === 'wesley';
+
+    let query;
+
+    if (isSuperAdmin || isAdmin) {
+      // 超級管理員（wesley）和一般管理員可以看到所有專案
+      query = sql`
+        SELECT
+          p.id,
+          p.name,
+          p.page_offset,
+          p.group_id,
+          pg.name as group_name,
+          (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
+          (
+            SELECT COUNT(*)
+            FROM annotations a
+            WHERE a.user_id = ${userId}
+            AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+          ) as completed_tasks
+        FROM projects p
+        LEFT JOIN project_groups pg ON p.group_id = pg.id
+        ORDER BY p.name;
+      `;
+    } else {
+      // 一般使用者只能看到：
+      // 使用者有權限的群組專案（必須明確分配到群組才能看到）
+      query = sql`
+        SELECT
+          p.id,
+          p.name,
+          p.page_offset,
+          p.group_id,
+          pg.name as group_name,
+          (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
+          (
+            SELECT COUNT(*)
+            FROM annotations a
+            WHERE a.user_id = ${userId}
+            AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+          ) as completed_tasks
+        FROM projects p
+        LEFT JOIN project_groups pg ON p.group_id = pg.id
+        WHERE p.group_id IN (
+          SELECT group_id FROM user_group_permissions WHERE user_id = ${userId}
+        )
+        ORDER BY p.name;
+      `;
+    }
+
+    const { rows } = await query;
     return { projects: rows };
   } catch (error) {
     return { error: error.message };
