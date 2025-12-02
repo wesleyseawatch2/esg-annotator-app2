@@ -203,6 +203,7 @@ export async function saveAnnotation(data) {
 
 export async function getAllUsersProgress() {
   try {
+    // 只查詢有分配使用者權限的組別和專案
     const { rows } = await sql`
       SELECT
         u.id as user_id,
@@ -219,10 +220,12 @@ export async function getAllUsersProgress() {
           WHERE a.user_id = u.id
           AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
         ) as completed_tasks
-      FROM users u
-      CROSS JOIN projects p
-      LEFT JOIN project_groups pg ON p.group_id = pg.id
-      ORDER BY pg.name NULLS LAST, p.name, u.username;
+      FROM user_group_permissions ugp
+      JOIN users u ON ugp.user_id = u.id
+      JOIN projects p ON ugp.group_id = p.group_id
+      JOIN project_groups pg ON p.group_id = pg.id
+      WHERE p.group_id IS NOT NULL
+      ORDER BY pg.name, p.name, u.username;
     `;
     return { success: true, data: rows };
   } catch (error) {
