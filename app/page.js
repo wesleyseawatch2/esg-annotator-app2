@@ -140,7 +140,12 @@ function AnnotationScreen({ user, project, onBack }) {
 
     useEffect(() => {
         if (currentItem && dataTextRef.current) {
-            dataTextRef.current.innerHTML = currentItem.original_data;
+            // 如果有已儲存的標註資料，恢復高亮；否則只顯示原始文本
+            if (currentItem.promise_string || currentItem.evidence_string) {
+                restoreHighlights(currentItem);
+            } else {
+                dataTextRef.current.innerHTML = currentItem.original_data;
+            }
         }
     }, [currentItem]);
 
@@ -176,6 +181,11 @@ function AnnotationScreen({ user, project, onBack }) {
         setVerificationTimeline(task.verification_timeline || '');
         setEvidenceStatus(task.evidence_status || '');
         setEvidenceQuality(task.evidence_quality || '');
+
+        // 恢復高亮標記
+        if (dataTextRef.current) {
+            restoreHighlights(task);
+        }
     };
 
     const handleResetProject = async () => {
@@ -259,6 +269,45 @@ function AnnotationScreen({ user, project, onBack }) {
         if (dataTextRef.current && currentItem) {
             dataTextRef.current.innerHTML = currentItem.original_data;
         }
+    };
+
+    const restoreHighlights = (task) => {
+        if (!dataTextRef.current) return;
+
+        // 先設定原始文本
+        dataTextRef.current.innerHTML = task.original_data;
+
+        // 恢復承諾高亮
+        if (task.promise_string) {
+            const promiseTexts = task.promise_string.split(' ').filter(t => t.trim());
+            promiseTexts.forEach(text => {
+                highlightTextInContent(text.trim(), 'promise');
+            });
+        }
+
+        // 恢復證據高亮
+        if (task.evidence_string) {
+            const evidenceTexts = task.evidence_string.split(' ').filter(t => t.trim());
+            evidenceTexts.forEach(text => {
+                highlightTextInContent(text.trim(), 'evidence');
+            });
+        }
+    };
+
+    const highlightTextInContent = (searchText, type) => {
+        if (!dataTextRef.current || !searchText) return;
+
+        const container = dataTextRef.current;
+        const innerHTML = container.innerHTML;
+
+        // 使用正則表達式找到文字並加上 span 標記
+        // 避免重複標記已經有 highlight 的文字
+        const regex = new RegExp(`(?![^<]*>)(${searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'g');
+        const newHTML = innerHTML.replace(regex, (match) => {
+            return `<span class="highlight-${type}">${match}</span>`;
+        });
+
+        container.innerHTML = newHTML;
     };
 
     const toggleEsgType = (type) => setEsgTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
