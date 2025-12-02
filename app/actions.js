@@ -210,6 +210,8 @@ export async function getAllUsersProgress() {
         u.role,
         p.id as project_id,
         p.name as project_name,
+        p.group_id,
+        pg.name as group_name,
         (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
         (
           SELECT COUNT(*)
@@ -219,7 +221,8 @@ export async function getAllUsersProgress() {
         ) as completed_tasks
       FROM users u
       CROSS JOIN projects p
-      ORDER BY p.name, u.username;
+      LEFT JOIN project_groups pg ON p.group_id = pg.id
+      ORDER BY pg.name NULLS LAST, p.name, u.username;
     `;
     return { success: true, data: rows };
   } catch (error) {

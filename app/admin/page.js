@@ -706,18 +706,29 @@ export default function AdminPage() {
 
     // 進度視圖 UI
     if (showProgressView) {
-        // 整理資料：按專案分組
-        const projectsMap = {};
+        // 整理資料：按群組分組
+        const groupsMap = {};
         allUsersProgress.forEach(row => {
-            if (!projectsMap[row.project_name]) {
-                projectsMap[row.project_name] = {
+            const groupKey = row.group_name || '未分組';
+
+            if (!groupsMap[groupKey]) {
+                groupsMap[groupKey] = {
+                    groupId: row.group_id,
+                    groupName: groupKey,
+                    projects: {}
+                };
+            }
+
+            if (!groupsMap[groupKey].projects[row.project_name]) {
+                groupsMap[groupKey].projects[row.project_name] = {
                     projectId: row.project_id,
                     projectName: row.project_name,
                     totalTasks: parseInt(row.total_tasks),
                     users: []
                 };
             }
-            projectsMap[row.project_name].users.push({
+
+            groupsMap[groupKey].projects[row.project_name].users.push({
                 userId: row.user_id,
                 username: row.username,
                 role: row.role,
@@ -725,13 +736,16 @@ export default function AdminPage() {
             });
         });
 
-        const projectsList = Object.values(projectsMap);
+        const groupsList = Object.values(groupsMap).map(group => ({
+            ...group,
+            projects: Object.values(group.projects)
+        }));
 
         return (
             <div className="container">
                 <div className="panel" style={{ marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h1>📊 所有使用者標註進度</h1>
+                        <h1>📊 組別標註進度</h1>
                         <button
                             className="btn"
                             onClick={() => setShowProgressView(false)}
@@ -742,118 +756,180 @@ export default function AdminPage() {
                     </div>
                 </div>
 
-                {projectsList.map(project => {
-                    // 計算總體進度
-                    const totalPossibleAnnotations = project.totalTasks * project.users.length;
-                    const totalCompletedAnnotations = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
-                    const overallPercentage = project.totalTasks > 0
-                        ? ((totalCompletedAnnotations / totalPossibleAnnotations) * 100).toFixed(1)
+                {groupsList.map((group, groupIdx) => {
+                    // 計算群組總體進度
+                    let groupTotalTasks = 0;
+                    let groupTotalCompleted = 0;
+
+                    group.projects.forEach(project => {
+                        const projectTotal = project.totalTasks * project.users.length;
+                        const projectCompleted = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
+                        groupTotalTasks += projectTotal;
+                        groupTotalCompleted += projectCompleted;
+                    });
+
+                    const groupPercentage = groupTotalTasks > 0
+                        ? ((groupTotalCompleted / groupTotalTasks) * 100).toFixed(1)
                         : 0;
 
                     return (
-                        <div key={project.projectId} className="panel" style={{ marginBottom: '20px' }}>
-                            <h2>{project.projectName}</h2>
+                        <div key={groupIdx} className="panel" style={{ marginBottom: '30px', background: '#fafafa' }}>
                             <div style={{
-                                background: '#f3f4f6',
-                                padding: '15px',
-                                borderRadius: '8px',
-                                marginBottom: '15px'
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                padding: '20px',
+                                borderRadius: '8px 8px 0 0',
+                                marginBottom: '20px',
+                                color: 'white'
                             }}>
-                                <p style={{ marginBottom: '8px' }}>
-                                    <strong>專案總任務數：</strong>{project.totalTasks}
-                                </p>
-                                <p style={{ marginBottom: '8px' }}>
-                                    <strong>總標註進度：</strong>
-                                    {totalCompletedAnnotations} / {totalPossibleAnnotations} ({overallPercentage}%)
-                                </p>
-                                <div style={{
-                                    background: '#e5e7eb',
-                                    borderRadius: '4px',
-                                    height: '20px',
-                                    overflow: 'hidden',
-                                    marginTop: '10px'
-                                }}>
+                                <h2 style={{ margin: '0 0 10px 0', color: 'white' }}>🔐 {group.groupName}</h2>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <p style={{ margin: '5px 0', fontSize: '14px' }}>
+                                            專案數：{group.projects.length}
+                                        </p>
+                                        <p style={{ margin: '5px 0', fontSize: '14px' }}>
+                                            總進度：{groupTotalCompleted} / {groupTotalTasks} ({groupPercentage}%)
+                                        </p>
+                                    </div>
                                     <div style={{
-                                        width: `${overallPercentage}%`,
-                                        background: '#3b82f6',
-                                        height: '100%',
-                                        transition: 'width 0.3s'
-                                    }}></div>
+                                        width: '200px',
+                                        background: 'rgba(255,255,255,0.3)',
+                                        borderRadius: '12px',
+                                        height: '24px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            width: `${groupPercentage}%`,
+                                            background: 'white',
+                                            height: '100%',
+                                            transition: 'width 0.3s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '12px',
+                                            fontWeight: 'bold',
+                                            color: '#667eea'
+                                        }}>
+                                            {groupPercentage}%
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ borderBottom: '2px solid #ddd', background: '#f9fafb' }}>
-                                        <th style={{ textAlign: 'left', padding: '12px' }}>使用者</th>
-                                        <th style={{ textAlign: 'left', padding: '12px' }}>角色</th>
-                                        <th style={{ textAlign: 'left', padding: '12px' }}>已完成</th>
-                                        <th style={{ textAlign: 'left', padding: '12px' }}>總任務</th>
-                                        <th style={{ textAlign: 'left', padding: '12px' }}>完成率</th>
-                                        <th style={{ textAlign: 'left', padding: '12px', width: '200px' }}>進度條</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {project.users.map(user => {
-                                        const percentage = project.totalTasks > 0
-                                            ? ((user.completedTasks / project.totalTasks) * 100).toFixed(1)
-                                            : 0;
-                                        return (
-                                            <tr key={user.userId} style={{ borderBottom: '1px solid #eee' }}>
-                                                <td style={{ padding: '12px' }}>{user.username}</td>
-                                                <td style={{ padding: '12px' }}>
-                                                    <span style={{
-                                                        padding: '4px 8px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '12px',
-                                                        background: user.role === 'admin' ? '#fef3c7' : '#dbeafe',
-                                                        color: user.role === 'admin' ? '#92400e' : '#1e40af'
-                                                    }}>
-                                                        {user.role}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '12px', fontWeight: 'bold' }}>{user.completedTasks}</td>
-                                                <td style={{ padding: '12px' }}>{project.totalTasks}</td>
-                                                <td style={{ padding: '12px', fontWeight: 'bold' }}>{percentage}%</td>
-                                                <td style={{ padding: '12px' }}>
-                                                    <div style={{
-                                                        background: '#e5e7eb',
-                                                        borderRadius: '4px',
-                                                        height: '24px',
-                                                        overflow: 'hidden',
-                                                        position: 'relative'
-                                                    }}>
-                                                        <div style={{
-                                                            width: `${percentage}%`,
-                                                            background: percentage >= 100 ? '#10b981' : '#3b82f6',
-                                                            height: '100%',
-                                                            transition: 'width 0.3s'
-                                                        }}></div>
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            top: '50%',
-                                                            left: '50%',
-                                                            transform: 'translate(-50%, -50%)',
-                                                            fontSize: '12px',
-                                                            fontWeight: 'bold',
-                                                            color: '#1f2937'
-                                                        }}>
-                                                            {percentage}%
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                            {group.projects.map(project => {
+                                // 計算專案進度
+                                const totalPossibleAnnotations = project.totalTasks * project.users.length;
+                                const totalCompletedAnnotations = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
+                                const overallPercentage = project.totalTasks > 0
+                                    ? ((totalCompletedAnnotations / totalPossibleAnnotations) * 100).toFixed(1)
+                                    : 0;
+
+                                return (
+                                    <div key={project.projectId} style={{ marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '8px' }}>
+                                        <h3 style={{ marginBottom: '15px', color: '#374151' }}>📁 {project.projectName}</h3>
+                                        <div style={{
+                                            background: '#f3f4f6',
+                                            padding: '12px',
+                                            borderRadius: '6px',
+                                            marginBottom: '15px'
+                                        }}>
+                                            <p style={{ marginBottom: '5px', fontSize: '13px' }}>
+                                                <strong>專案總任務數：</strong>{project.totalTasks}
+                                            </p>
+                                            <p style={{ marginBottom: '8px', fontSize: '13px' }}>
+                                                <strong>標註進度：</strong>
+                                                {totalCompletedAnnotations} / {totalPossibleAnnotations} ({overallPercentage}%)
+                                            </p>
+                                            <div style={{
+                                                background: '#e5e7eb',
+                                                borderRadius: '4px',
+                                                height: '16px',
+                                                overflow: 'hidden'
+                                            }}>
+                                                <div style={{
+                                                    width: `${overallPercentage}%`,
+                                                    background: '#8b5cf6',
+                                                    height: '100%',
+                                                    transition: 'width 0.3s'
+                                                }}></div>
+                                            </div>
+                                        </div>
+
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '2px solid #ddd', background: '#f9fafb' }}>
+                                                    <th style={{ textAlign: 'left', padding: '10px' }}>使用者</th>
+                                                    <th style={{ textAlign: 'left', padding: '10px' }}>角色</th>
+                                                    <th style={{ textAlign: 'left', padding: '10px' }}>已完成</th>
+                                                    <th style={{ textAlign: 'left', padding: '10px' }}>總任務</th>
+                                                    <th style={{ textAlign: 'left', padding: '10px' }}>完成率</th>
+                                                    <th style={{ textAlign: 'left', padding: '10px', width: '180px' }}>進度條</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {project.users.map(user => {
+                                                    const percentage = project.totalTasks > 0
+                                                        ? ((user.completedTasks / project.totalTasks) * 100).toFixed(1)
+                                                        : 0;
+                                                    return (
+                                                        <tr key={user.userId} style={{ borderBottom: '1px solid #eee' }}>
+                                                            <td style={{ padding: '10px' }}>{user.username}</td>
+                                                            <td style={{ padding: '10px' }}>
+                                                                <span style={{
+                                                                    padding: '3px 6px',
+                                                                    borderRadius: '3px',
+                                                                    fontSize: '11px',
+                                                                    background: user.role === 'admin' ? '#fef3c7' : '#dbeafe',
+                                                                    color: user.role === 'admin' ? '#92400e' : '#1e40af'
+                                                                }}>
+                                                                    {user.role}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{user.completedTasks}</td>
+                                                            <td style={{ padding: '10px' }}>{project.totalTasks}</td>
+                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{percentage}%</td>
+                                                            <td style={{ padding: '10px' }}>
+                                                                <div style={{
+                                                                    background: '#e5e7eb',
+                                                                    borderRadius: '4px',
+                                                                    height: '20px',
+                                                                    overflow: 'hidden',
+                                                                    position: 'relative'
+                                                                }}>
+                                                                    <div style={{
+                                                                        width: `${percentage}%`,
+                                                                        background: percentage >= 100 ? '#10b981' : '#3b82f6',
+                                                                        height: '100%',
+                                                                        transition: 'width 0.3s'
+                                                                    }}></div>
+                                                                    <span style={{
+                                                                        position: 'absolute',
+                                                                        top: '50%',
+                                                                        left: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 'bold',
+                                                                        color: '#1f2937'
+                                                                    }}>
+                                                                        {percentage}%
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })}
                         </div>
                     );
                 })}
 
-                {projectsList.length === 0 && (
+                {groupsList.length === 0 && (
                     <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
-                        <p style={{ color: '#6b7280' }}>目前沒有專案資料</p>
+                        <p style={{ color: '#6b7280' }}>目前沒有資料</p>
                     </div>
                 )}
             </div>
@@ -1122,7 +1198,7 @@ export default function AdminPage() {
                         }}
                         style={{ background: '#3b82f6', color: 'white', marginRight: '10px' }}
                     >
-                        📊 查看所有人進度
+                        📊 查看組別進度
                     </button>
                     <button className="btn" onClick={() => router.push('/')}>返回標註</button>
                 </div>
