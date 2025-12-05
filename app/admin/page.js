@@ -9,7 +9,10 @@ import {
     createProjectGroup, getAllGroups, assignUserToGroup, removeUserFromGroup,
     assignProjectToGroup, getGroupUsers, getAllUsersForAssignment, deleteGroup,
     updateProjectName, createAnnouncement, getAllAnnouncements, updateAnnouncement,
-    deleteAnnouncement, toggleAnnouncementStatus
+    deleteAnnouncement, toggleAnnouncementStatus,
+    scanAndCreateCompanyRecords, getAllCompanies, assignCompanyDataToNewProject,
+    assignCompanyDataToExistingProject, getCompanyAssignmentDetails,
+    removeCompanyDataAssignment, getAvailableRanges
 } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
@@ -56,6 +59,18 @@ export default function AdminPage() {
         isActive: true
     });
     const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
+    // 公司資料管理相關狀態
+    const [showCompanyManagement, setShowCompanyManagement] = useState(false);
+    const [companies, setCompanies] = useState([]);
+    const [selectedCompany, setSelectedCompany] = useState(null);
+    const [assignmentRange, setAssignmentRange] = useState({ start: 1, end: 50 });
+    const [assignmentMode, setAssignmentMode] = useState('new'); // 'new' or 'existing'
+    const [newProjectName, setNewProjectName] = useState('');
+    const [newProjectGroupId, setNewProjectGroupId] = useState(null);
+    const [existingProjectId, setExistingProjectId] = useState(null);
+    const [companyAssignments, setCompanyAssignments] = useState([]);
+    const [availableRanges, setAvailableRanges] = useState([]);
+    const [isCompanyMigrated, setIsCompanyMigrated] = useState(false);
     const formRef = useRef(null);
     const batchFormRef = useRef(null);
     const router = useRouter();
@@ -776,6 +791,177 @@ export default function AdminPage() {
         }
     };
 
+    // ========== 公司資料管理相關函數 ==========
+
+    const loadCompanies = async () => {
+        const result = await getAllCompanies(user.id);
+        if (result.success) {
+            setCompanies(result.companies);
+        } else {
+            alert(`載入公司列表失敗: ${result.error}`);
+        }
+    };
+
+    const handleRunCompanyMigration = async () => {
+        if (!window.confirm('確定要執行公司管理資料庫遷移嗎？')) return;
+
+        setIsUploading(true);
+        setUploadProgress('正在執行資料庫遷移...');
+
+        try {
+            const response = await fetch('/api/migrate-company');
+            const result = await response.json();
+
+            if (result.success) {
+                alert('遷移成功！' + result.message);
+                setIsCompanyMigrated(true);
+            } else {
+                alert('遷移失敗：' + result.error);
+            }
+        } catch (error) {
+            alert('遷移失敗：' + error.message);
+        } finally {
+            setIsUploading(false);
+            setUploadProgress('');
+        }
+    };
+
+    const handleScanCompanies = async () => {
+        setIsUploading(true);
+        setUploadProgress('正在掃描專案並建立公司記錄...');
+
+        const result = await scanAndCreateCompanyRecords(user.id);
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            alert(result.message);
+            await loadCompanies();
+        } else {
+            alert(`掃描失敗: ${result.error}`);
+        }
+    };
+
+    const handleSelectCompany = async (companyId) => {
+        const company = companies.find(c => c.id === parseInt(companyId));
+        setSelectedCompany(company);
+
+        if (company) {
+            // 載入分配歷史
+            const assignResult = await getCompanyAssignmentDetails(user.id, company.id);
+            if (assignResult.success) {
+                setCompanyAssignments(assignResult.assignments);
+            }
+
+            // 載入可用範圍
+            const rangeResult = await getAvailableRanges(user.id, company.id);
+            if (rangeResult.success) {
+                setAvailableRanges(rangeResult.availableRanges);
+                // 自動設定第一個可用範圍
+                if (rangeResult.availableRanges.length > 0) {
+                    const firstRange = rangeResult.availableRanges[0];
+                    setAssignmentRange({
+                        start: firstRange.start,
+                        end: Math.min(firstRange.start + 49, firstRange.end)
+                    });
+                }
+            }
+        } else {
+            setCompanyAssignments([]);
+            setAvailableRanges([]);
+        }
+    };
+
+    const handleAssignCompanyData = async () => {
+        if (!selectedCompany) {
+            alert('請選擇公司');
+            return;
+        }
+
+        const recordCount = assignmentRange.end - assignmentRange.start + 1;
+        let result;
+
+        if (assignmentMode === 'new') {
+            // 建立新專案模式
+            if (!newProjectName || newProjectName.trim() === '') {
+                alert('請輸入新專案名稱');
+                return;
+            }
+
+            if (!window.confirm(
+                `確定要建立新專案「${newProjectName}」並將 ${selectedCompany.code} 的資料範圍 ${assignmentRange.start}-${assignmentRange.end} (共 ${recordCount} 筆) 分配過去嗎？`
+            )) return;
+
+            setIsUploading(true);
+            setUploadProgress('正在建立新專案並分配資料...');
+
+            result = await assignCompanyDataToNewProject(
+                user.id,
+                selectedCompany.id,
+                newProjectName.trim(),
+                newProjectGroupId,
+                assignmentRange.start,
+                assignmentRange.end
+            );
+        } else {
+            // 合併到現有專案模式
+            if (!existingProjectId) {
+                alert('請選擇目標專案');
+                return;
+            }
+
+            const targetProject = projects.find(p => p.id === existingProjectId);
+            if (!window.confirm(
+                `確定要將 ${selectedCompany.code} 的資料範圍 ${assignmentRange.start}-${assignmentRange.end} (共 ${recordCount} 筆) 合併到專案「${targetProject?.name}」嗎？`
+            )) return;
+
+            setIsUploading(true);
+            setUploadProgress('正在合併資料到現有專案...');
+
+            result = await assignCompanyDataToExistingProject(
+                user.id,
+                selectedCompany.id,
+                existingProjectId,
+                assignmentRange.start,
+                assignmentRange.end
+            );
+        }
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            alert(result.message);
+            // 清空表單
+            setNewProjectName('');
+            setNewProjectGroupId(null);
+            setExistingProjectId(null);
+            // 重新載入資料
+            await loadProjects(user.id);
+            await loadCompanies();
+            await handleSelectCompany(selectedCompany.id);
+        } else {
+            alert(`分配失敗: ${result.error}`);
+        }
+    };
+
+    const handleRemoveAssignment = async (assignmentId) => {
+        if (!window.confirm('確定要撤銷這個分配嗎？')) return;
+
+        const result = await removeCompanyDataAssignment(user.id, assignmentId);
+
+        if (result.success) {
+            alert(result.message);
+            await loadCompanies();
+            if (selectedCompany) {
+                await handleSelectCompany(selectedCompany.id);
+            }
+        } else {
+            alert(`撤銷失敗: ${result.error}`);
+        }
+    };
+
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
 
     // 進度視圖 UI
@@ -1255,6 +1441,19 @@ export default function AdminPage() {
                     <button
                         className="btn"
                         onClick={async () => {
+                            setShowCompanyManagement(!showCompanyManagement);
+                            if (!showCompanyManagement) {
+                                await loadCompanies();
+                                await loadGroups();
+                            }
+                        }}
+                        style={{ background: '#f59e0b', color: 'white', marginRight: '10px' }}
+                    >
+                        🏢 {showCompanyManagement ? '關閉' : '開啟'}公司資料管理
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={async () => {
                             setShowAnnouncementManagement(!showAnnouncementManagement);
                             if (!showAnnouncementManagement) {
                                 await loadAnnouncements();
@@ -1459,6 +1658,400 @@ export default function AdminPage() {
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* 公司資料管理區塊 */}
+            {showCompanyManagement && (
+                <div className="panel" style={{marginBottom: '20px', background: '#fff7ed', borderLeft: '4px solid #f59e0b'}}>
+                    <h2>🏢 公司資料分配管理</h2>
+
+                    {/* 資料庫遷移按鈕 */}
+                    {!isCompanyMigrated && (
+                        <div style={{
+                            padding: '15px',
+                            marginBottom: '20px',
+                            background: '#fef3c7',
+                            border: '2px solid #f59e0b',
+                            borderRadius: '8px'
+                        }}>
+                            <p style={{marginBottom: '10px', color: '#92400e'}}>
+                                <strong>⚠️ 首次使用需要執行資料庫遷移</strong>
+                            </p>
+                            <p style={{marginBottom: '15px', fontSize: '14px', color: '#92400e'}}>
+                                這將建立公司管理和資料分配相關的資料表
+                            </p>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <button
+                                    className="btn"
+                                    onClick={handleRunCompanyMigration}
+                                    disabled={isUploading}
+                                    style={{background: '#f59e0b', color: 'white'}}
+                                >
+                                    執行公司管理資料庫遷移
+                                </button>
+                                <button
+                                    className="btn"
+                                    onClick={() => setIsCompanyMigrated(true)}
+                                    disabled={isUploading}
+                                    style={{background: '#6b7280', color: 'white'}}
+                                >
+                                    跳過（已遷移過）
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {isCompanyMigrated && (
+                        <>
+                            {/* 步驟 1: 掃描並建立公司記錄 */}
+                            <div style={{marginBottom: '30px', padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                <h3 style={{marginBottom: '10px'}}>📋 步驟 1: 掃描現有專案</h3>
+                                <p style={{marginBottom: '15px', fontSize: '14px', color: '#6b7280'}}>
+                                    系統將自動從專案名稱提取公司資訊並建立記錄
+                                </p>
+                                <button
+                                    className="btn"
+                                    onClick={handleScanCompanies}
+                                    disabled={isUploading}
+                                    style={{background: '#3b82f6', color: 'white'}}
+                                >
+                                    🔍 掃描專案並建立公司記錄
+                                </button>
+                                {companies.length > 0 && (
+                                    <p style={{marginTop: '10px', fontSize: '14px', color: '#10b981'}}>
+                                        ✓ 已載入 {companies.length} 家公司
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* 步驟 2: 選擇公司與資料範圍 */}
+                            {companies.length > 0 && (
+                                <div style={{marginBottom: '30px', padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                    <h3 style={{marginBottom: '15px'}}>📊 步驟 2: 選擇公司與資料範圍</h3>
+
+                                    {/* 公司選擇 */}
+                                    <div style={{marginBottom: '20px'}}>
+                                        <label style={{display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold'}}>
+                                            選擇公司
+                                        </label>
+                                        <select
+                                            onChange={(e) => handleSelectCompany(e.target.value)}
+                                            value={selectedCompany?.id || ''}
+                                            style={{
+                                                width: '100%',
+                                                padding: '10px',
+                                                borderRadius: '4px',
+                                                border: '2px solid #d1d5db',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            <option value="">-- 請選擇公司 --</option>
+                                            {companies.map(c => (
+                                                <option key={c.id} value={c.id}>
+                                                    {c.group_name} - {c.code} (總計: {c.total_records} 筆 | 已分配: {c.assigned_records} 筆 | 剩餘: {c.total_records - c.assigned_records} 筆)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* 可用範圍顯示 */}
+                                    {selectedCompany && availableRanges.length > 0 && (
+                                        <div style={{marginBottom: '20px', padding: '12px', background: '#dbeafe', borderRadius: '6px'}}>
+                                            <h4 style={{marginBottom: '8px', fontSize: '14px', color: '#1e40af'}}>
+                                                📍 可用的資料範圍：
+                                            </h4>
+                                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px'}}>
+                                                {availableRanges.map((range, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        style={{
+                                                            padding: '6px 12px',
+                                                            background: 'white',
+                                                            border: '1px solid #3b82f6',
+                                                            borderRadius: '4px',
+                                                            fontSize: '13px',
+                                                            color: '#1e40af'
+                                                        }}
+                                                    >
+                                                        {range.start}-{range.end} ({range.count} 筆)
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedCompany && availableRanges.length === 0 && (
+                                        <div style={{padding: '12px', background: '#fef3c7', borderRadius: '6px', marginBottom: '20px'}}>
+                                            <p style={{margin: 0, fontSize: '14px', color: '#92400e'}}>
+                                                ⚠️ 此公司的所有資料已全部分配完畢
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {/* 範圍輸入 */}
+                                    {selectedCompany && availableRanges.length > 0 && (
+                                        <div style={{marginBottom: '20px'}}>
+                                            <label style={{display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold'}}>
+                                                選擇資料範圍
+                                            </label>
+                                            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max={selectedCompany.total_records}
+                                                    value={assignmentRange.start}
+                                                    onChange={(e) => setAssignmentRange({
+                                                        ...assignmentRange,
+                                                        start: parseInt(e.target.value) || 1
+                                                    })}
+                                                    style={{
+                                                        width: '120px',
+                                                        padding: '8px',
+                                                        borderRadius: '4px',
+                                                        border: '2px solid #d1d5db'
+                                                    }}
+                                                />
+                                                <span style={{fontSize: '18px', fontWeight: 'bold'}}>-</span>
+                                                <input
+                                                    type="number"
+                                                    min={assignmentRange.start}
+                                                    max={selectedCompany.total_records}
+                                                    value={assignmentRange.end}
+                                                    onChange={(e) => setAssignmentRange({
+                                                        ...assignmentRange,
+                                                        end: parseInt(e.target.value) || assignmentRange.start
+                                                    })}
+                                                    style={{
+                                                        width: '120px',
+                                                        padding: '8px',
+                                                        borderRadius: '4px',
+                                                        border: '2px solid #d1d5db'
+                                                    }}
+                                                />
+                                                <span style={{
+                                                    padding: '8px 16px',
+                                                    background: '#e0e7ff',
+                                                    borderRadius: '4px',
+                                                    fontSize: '14px',
+                                                    fontWeight: 'bold',
+                                                    color: '#3730a3'
+                                                }}>
+                                                    共 {assignmentRange.end - assignmentRange.start + 1} 筆資料
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 步驟 3: 選擇分配模式 */}
+                                    {selectedCompany && availableRanges.length > 0 && (
+                                        <div style={{marginBottom: '20px'}}>
+                                            <h4 style={{marginBottom: '15px', fontSize: '14px', fontWeight: 'bold'}}>
+                                                📝 步驟 3: 選擇分配模式
+                                            </h4>
+
+                                            {/* 模式選擇 */}
+                                            <div style={{marginBottom: '20px'}}>
+                                                <div style={{display: 'flex', gap: '10px'}}>
+                                                    <button
+                                                        onClick={() => setAssignmentMode('new')}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '12px',
+                                                            borderRadius: '6px',
+                                                            border: assignmentMode === 'new' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                                                            background: assignmentMode === 'new' ? '#eff6ff' : 'white',
+                                                            cursor: 'pointer',
+                                                            fontSize: '14px',
+                                                            fontWeight: assignmentMode === 'new' ? 'bold' : 'normal',
+                                                            color: assignmentMode === 'new' ? '#1e40af' : '#6b7280'
+                                                        }}
+                                                    >
+                                                        🆕 建立新專案
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setAssignmentMode('existing')}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '12px',
+                                                            borderRadius: '6px',
+                                                            border: assignmentMode === 'existing' ? '3px solid #10b981' : '2px solid #d1d5db',
+                                                            background: assignmentMode === 'existing' ? '#d1fae5' : 'white',
+                                                            cursor: 'pointer',
+                                                            fontSize: '14px',
+                                                            fontWeight: assignmentMode === 'existing' ? 'bold' : 'normal',
+                                                            color: assignmentMode === 'existing' ? '#065f46' : '#6b7280'
+                                                        }}
+                                                    >
+                                                        🔗 合併到現有專案
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* 建立新專案表單 */}
+                                            {assignmentMode === 'new' && (
+                                                <div style={{display: 'grid', gap: '15px'}}>
+                                                    <div>
+                                                        <label style={{display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold'}}>
+                                                            新專案名稱 *
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={newProjectName}
+                                                            onChange={(e) => setNewProjectName(e.target.value)}
+                                                            placeholder="例如：週報_A公司_1-50"
+                                                            style={{
+                                                                width: '100%',
+                                                                padding: '10px',
+                                                                borderRadius: '4px',
+                                                                border: '2px solid #d1d5db',
+                                                                fontSize: '14px'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold'}}>
+                                                            分配到群組（選填）
+                                                        </label>
+                                                        <select
+                                                            onChange={(e) => setNewProjectGroupId(e.target.value ? parseInt(e.target.value) : null)}
+                                                            value={newProjectGroupId || ''}
+                                                            style={{
+                                                                width: '100%',
+                                                                padding: '10px',
+                                                                borderRadius: '4px',
+                                                                border: '2px solid #d1d5db',
+                                                                fontSize: '14px'
+                                                            }}
+                                                        >
+                                                            <option value="">-- 不分配群組 --</option>
+                                                            {groups.map(g => (
+                                                                <option key={g.id} value={g.id}>
+                                                                    {g.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* 選擇現有專案表單 */}
+                                            {assignmentMode === 'existing' && (
+                                                <div>
+                                                    <label style={{display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold'}}>
+                                                        選擇目標專案 *
+                                                    </label>
+                                                    <select
+                                                        onChange={(e) => setExistingProjectId(e.target.value ? parseInt(e.target.value) : null)}
+                                                        value={existingProjectId || ''}
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '10px',
+                                                            borderRadius: '4px',
+                                                            border: '2px solid #d1d5db',
+                                                            fontSize: '14px'
+                                                        }}
+                                                    >
+                                                        <option value="">-- 請選擇目標專案 --</option>
+                                                        {projects.map(p => (
+                                                            <option key={p.id} value={p.id}>
+                                                                {p.name} (群組: {p.group_name || '無'})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* 分配按鈕 */}
+                                    {selectedCompany && availableRanges.length > 0 && (
+                                        <button
+                                            className="btn"
+                                            onClick={handleAssignCompanyData}
+                                            disabled={
+                                                (assignmentMode === 'new' && !newProjectName.trim()) ||
+                                                (assignmentMode === 'existing' && !existingProjectId) ||
+                                                isUploading
+                                            }
+                                            style={{
+                                                background:
+                                                    ((assignmentMode === 'new' && newProjectName.trim()) ||
+                                                     (assignmentMode === 'existing' && existingProjectId))
+                                                    ? '#10b981' : '#9ca3af',
+                                                color: 'white',
+                                                padding: '12px 30px',
+                                                fontSize: '16px',
+                                                cursor:
+                                                    ((assignmentMode === 'new' && newProjectName.trim()) ||
+                                                     (assignmentMode === 'existing' && existingProjectId)) && !isUploading
+                                                    ? 'pointer' : 'not-allowed'
+                                            }}
+                                        >
+                                            {assignmentMode === 'new' ? '✓ 建立新專案並分配資料' : '✓ 合併資料到現有專案'}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* 分配歷史 */}
+                            {selectedCompany && companyAssignments.length > 0 && (
+                                <div style={{padding: '15px', background: 'white', borderRadius: '8px'}}>
+                                    <h3 style={{marginBottom: '15px'}}>📜 分配歷史</h3>
+                                    <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '14px'}}>
+                                        <thead>
+                                            <tr style={{borderBottom: '2px solid #ddd', background: '#f9fafb'}}>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>目標專案</th>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>起始記錄</th>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>結束記錄</th>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>記錄數</th>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>分配時間</th>
+                                                <th style={{textAlign: 'left', padding: '10px'}}>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {companyAssignments.map(assignment => (
+                                                <tr key={assignment.id} style={{borderBottom: '1px solid #eee'}}>
+                                                    <td style={{padding: '10px'}}>{assignment.project_name}</td>
+                                                    <td style={{padding: '10px'}}>{assignment.start_record}</td>
+                                                    <td style={{padding: '10px'}}>{assignment.end_record}</td>
+                                                    <td style={{padding: '10px'}}>{assignment.record_count}</td>
+                                                    <td style={{padding: '10px'}}>
+                                                        {new Date(assignment.assigned_at).toLocaleString('zh-TW')}
+                                                    </td>
+                                                    <td style={{padding: '10px'}}>
+                                                        <button
+                                                            className="btn"
+                                                            onClick={() => handleRemoveAssignment(assignment.id)}
+                                                            style={{
+                                                                padding: '5px 10px',
+                                                                fontSize: '12px',
+                                                                background: '#ef4444',
+                                                                color: 'white'
+                                                            }}
+                                                        >
+                                                            🗑️ 撤銷
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {isUploading && uploadProgress && (
+                        <p style={{
+                            textAlign: 'center',
+                            marginTop: '15px',
+                            color: '#3b82f6',
+                            fontWeight: 'bold'
+                        }}>
+                            {uploadProgress}
+                        </p>
+                    )}
                 </div>
             )}
 

@@ -912,3 +912,523 @@ export async function batchUploadGroupData(userId, formData) {
     return { success: false, error: error.message };
   }
 }
+
+// ==================== 公司資料管理功能 ====================
+
+// --- 掃描現有專案並建立公司記錄 ---
+export async function scanAndCreateCompanyRecords(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 掃描所有專案，提取公司資訊
+    const { rows: projects } = await sql`SELECT id, name FROM projects ORDER BY name;`;
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const project of projects) {
+      // 解析專案名稱: GroupName_CompanyCode
+      const parts = project.name.split('_');
+      if (parts.length < 2) continue;
+
+      const groupName = parts[0];
+      const companyCode = parts.slice(1).join('_'); // 公司代碼可能包含底線
+
+      // 計算該專案的資料總筆數
+      const { rows: stats } = await sql`
+        SELECT COUNT(*) as total FROM source_data WHERE project_id = ${project.id};
+      `;
+      const totalRecords = parseInt(stats[0]?.total || 0);
+
+      // 檢查公司是否已存在
+      const { rows: existing } = await sql`
+        SELECT id, total_records FROM companies
+        WHERE code = ${companyCode} AND group_name = ${groupName};
+      `;
+
+      if (existing.length === 0) {
+        // 建立新公司記錄
+        await sql`
+          INSERT INTO companies (code, name, group_name, total_records)
+          VALUES (${companyCode}, ${companyCode}, ${groupName}, ${totalRecords});
+        `;
+        createdCount++;
+      } else {
+        // 更新現有公司的資料筆數
+        await sql`
+          UPDATE companies
+          SET total_records = ${totalRecords},
+              updated_at = NOW()
+          WHERE id = ${existing[0].id};
+        `;
+        updatedCount++;
+      }
+    }
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `掃描完成！建立 ${createdCount} 筆新公司記錄，更新 ${updatedCount} 筆現有記錄。`
+    };
+  } catch (error) {
+    console.error('掃描公司記錄失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得所有公司及其資料狀況 ---
+export async function getAllCompanies(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: companies } = await sql`
+      SELECT
+        c.id,
+        c.code,
+        c.name,
+        c.group_name,
+        c.total_records,
+        c.assigned_records,
+        c.created_at,
+        c.updated_at,
+        (SELECT COUNT(*) FROM company_data_assignments WHERE company_id = c.id) as assignment_count
+      FROM companies c
+      ORDER BY c.group_name, c.code;
+    `;
+
+    return { success: true, companies };
+  } catch (error) {
+    console.error('取得公司列表失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 檢查資料範圍是否已被分配 ---
+async function checkRangeOverlap(companyId, startRecord, endRecord) {
+  const { rows: overlaps } = await sql`
+    SELECT
+      cda.id,
+      cda.start_record,
+      cda.end_record,
+      p.name as project_name
+    FROM company_data_assignments cda
+    JOIN projects p ON cda.project_id = p.id
+    WHERE cda.company_id = ${companyId}
+      AND NOT (cda.end_record < ${startRecord} OR cda.start_record > ${endRecord});
+  `;
+
+  return overlaps;
+}
+
+// --- 分配公司的特定資料範圍到新專案 ---
+export async function assignCompanyDataToNewProject(
+  userId,
+  companyId,
+  newProjectName,
+  groupId,
+  startRecord,
+  endRecord
+) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 驗證輸入
+    if (startRecord < 1 || endRecord < startRecord) {
+      return { success: false, error: '無效的資料範圍' };
+    }
+
+    if (!newProjectName || newProjectName.trim() === '') {
+      return { success: false, error: '請輸入新專案名稱' };
+    }
+
+    // 驗證公司存在
+    const { rows: companyRows } = await sql`
+      SELECT id, code, group_name, total_records FROM companies WHERE id = ${companyId};
+    `;
+    if (companyRows.length === 0) {
+      return { success: false, error: '公司不存在' };
+    }
+    const company = companyRows[0];
+
+    // 檢查範圍是否超出總記錄數
+    if (endRecord > company.total_records) {
+      return {
+        success: false,
+        error: `結束記錄 (${endRecord}) 超出公司總記錄數 (${company.total_records})`
+      };
+    }
+
+    // 檢查專案名稱是否已存在
+    const { rows: existingProject } = await sql`
+      SELECT id FROM projects WHERE name = ${newProjectName.trim()};
+    `;
+    if (existingProject.length > 0) {
+      return { success: false, error: '專案名稱已存在，請使用其他名稱' };
+    }
+
+    // 檢查範圍是否與現有分配重疊
+    const overlaps = await checkRangeOverlap(companyId, startRecord, endRecord);
+    if (overlaps.length > 0) {
+      const overlapInfo = overlaps.map(o =>
+        `${o.start_record}-${o.end_record} (${o.project_name})`
+      ).join(', ');
+      return {
+        success: false,
+        error: `資料範圍重疊！已分配的範圍：${overlapInfo}`
+      };
+    }
+
+    // 查詢來源專案（用公司代碼和組別查找）
+    const sourceProjectName = `${company.group_name}_${company.code}`;
+    const { rows: sourceProjectRows } = await sql`
+      SELECT id, pdf_urls, page_offset FROM projects WHERE name = ${sourceProjectName};
+    `;
+
+    if (sourceProjectRows.length === 0) {
+      return { success: false, error: `找不到來源專案: ${sourceProjectName}` };
+    }
+    const sourceProject = sourceProjectRows[0];
+
+    // 取得指定範圍的 source_data
+    const recordCount = endRecord - startRecord + 1;
+    const { rows: sourceDataRows } = await sql`
+      SELECT * FROM source_data
+      WHERE project_id = ${sourceProject.id}
+      ORDER BY id
+      LIMIT ${recordCount} OFFSET ${startRecord - 1};
+    `;
+
+    if (sourceDataRows.length === 0) {
+      return { success: false, error: '找不到指定範圍的資料' };
+    }
+
+    // 建立新專案
+    const { rows: newProjectRows } = await sql`
+      INSERT INTO projects (name, page_offset, pdf_urls, group_id)
+      VALUES (
+        ${newProjectName.trim()},
+        ${sourceProject.page_offset},
+        ${sourceProject.pdf_urls},
+        ${groupId || null}
+      )
+      RETURNING id;
+    `;
+    const newProjectId = newProjectRows[0].id;
+
+    // 複製 source_data 到新專案
+    for (const sourceData of sourceDataRows) {
+      await sql`
+        INSERT INTO source_data (project_id, original_data, source_url, page_number, bbox)
+        VALUES (
+          ${newProjectId},
+          ${sourceData.original_data},
+          ${sourceData.source_url},
+          ${sourceData.page_number},
+          ${sourceData.bbox}
+        );
+      `;
+    }
+
+    // 建立分配記錄
+    await sql`
+      INSERT INTO company_data_assignments
+        (company_id, project_id, start_record, end_record, record_count)
+      VALUES (${companyId}, ${newProjectId}, ${startRecord}, ${endRecord}, ${recordCount});
+    `;
+
+    // 更新公司已分配記錄數
+    const { rows: totalAssigned } = await sql`
+      SELECT SUM(record_count) as total
+      FROM company_data_assignments
+      WHERE company_id = ${companyId};
+    `;
+
+    await sql`
+      UPDATE companies
+      SET assigned_records = ${totalAssigned[0]?.total || 0},
+          updated_at = NOW()
+      WHERE id = ${companyId};
+    `;
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `成功建立新專案「${newProjectName}」並分配 ${recordCount} 筆資料 (${startRecord}-${endRecord})`,
+      projectId: newProjectId
+    };
+  } catch (error) {
+    console.error('分配資料到新專案失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 分配公司的特定資料範圍到現有專案（合併） ---
+export async function assignCompanyDataToExistingProject(
+  userId,
+  companyId,
+  existingProjectId,
+  startRecord,
+  endRecord
+) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 驗證輸入
+    if (startRecord < 1 || endRecord < startRecord) {
+      return { success: false, error: '無效的資料範圍' };
+    }
+
+    // 驗證公司存在
+    const { rows: companyRows } = await sql`
+      SELECT id, code, group_name, total_records FROM companies WHERE id = ${companyId};
+    `;
+    if (companyRows.length === 0) {
+      return { success: false, error: '公司不存在' };
+    }
+    const company = companyRows[0];
+
+    // 檢查範圍是否超出總記錄數
+    if (endRecord > company.total_records) {
+      return {
+        success: false,
+        error: `結束記錄 (${endRecord}) 超出公司總記錄數 (${company.total_records})`
+      };
+    }
+
+    // 驗證目標專案存在
+    const { rows: targetProjectRows } = await sql`
+      SELECT id, name FROM projects WHERE id = ${existingProjectId};
+    `;
+    if (targetProjectRows.length === 0) {
+      return { success: false, error: '目標專案不存在' };
+    }
+    const targetProject = targetProjectRows[0];
+
+    // 檢查範圍是否與現有分配重疊
+    const overlaps = await checkRangeOverlap(companyId, startRecord, endRecord);
+    if (overlaps.length > 0) {
+      const overlapInfo = overlaps.map(o =>
+        `${o.start_record}-${o.end_record} (${o.project_name})`
+      ).join(', ');
+      return {
+        success: false,
+        error: `資料範圍重疊！已分配的範圍：${overlapInfo}`
+      };
+    }
+
+    // 查詢來源專案
+    const sourceProjectName = `${company.group_name}_${company.code}`;
+    const { rows: sourceProjectRows } = await sql`
+      SELECT id FROM projects WHERE name = ${sourceProjectName};
+    `;
+
+    if (sourceProjectRows.length === 0) {
+      return { success: false, error: `找不到來源專案: ${sourceProjectName}` };
+    }
+    const sourceProject = sourceProjectRows[0];
+
+    // 取得指定範圍的 source_data
+    const recordCount = endRecord - startRecord + 1;
+    const { rows: sourceDataRows } = await sql`
+      SELECT * FROM source_data
+      WHERE project_id = ${sourceProject.id}
+      ORDER BY id
+      LIMIT ${recordCount} OFFSET ${startRecord - 1};
+    `;
+
+    if (sourceDataRows.length === 0) {
+      return { success: false, error: '找不到指定範圍的資料' };
+    }
+
+    // 複製 source_data 到目標專案
+    for (const sourceData of sourceDataRows) {
+      await sql`
+        INSERT INTO source_data (project_id, original_data, source_url, page_number, bbox)
+        VALUES (
+          ${existingProjectId},
+          ${sourceData.original_data},
+          ${sourceData.source_url},
+          ${sourceData.page_number},
+          ${sourceData.bbox}
+        );
+      `;
+    }
+
+    // 建立分配記錄
+    await sql`
+      INSERT INTO company_data_assignments
+        (company_id, project_id, start_record, end_record, record_count)
+      VALUES (${companyId}, ${existingProjectId}, ${startRecord}, ${endRecord}, ${recordCount});
+    `;
+
+    // 更新公司已分配記錄數
+    const { rows: totalAssigned } = await sql`
+      SELECT SUM(record_count) as total
+      FROM company_data_assignments
+      WHERE company_id = ${companyId};
+    `;
+
+    await sql`
+      UPDATE companies
+      SET assigned_records = ${totalAssigned[0]?.total || 0},
+          updated_at = NOW()
+      WHERE id = ${companyId};
+    `;
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `成功將 ${recordCount} 筆資料 (${startRecord}-${endRecord}) 合併到專案「${targetProject.name}」`
+    };
+  } catch (error) {
+    console.error('合併資料到現有專案失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得公司的分配詳情 ---
+export async function getCompanyAssignmentDetails(userId, companyId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: assignments } = await sql`
+      SELECT
+        cda.id,
+        cda.start_record,
+        cda.end_record,
+        cda.record_count,
+        p.id as project_id,
+        p.name as project_name,
+        cda.assigned_at
+      FROM company_data_assignments cda
+      JOIN projects p ON cda.project_id = p.id
+      WHERE cda.company_id = ${companyId}
+      ORDER BY cda.start_record;
+    `;
+
+    return { success: true, assignments };
+  } catch (error) {
+    console.error('取得分配詳情失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 移除分配 (撤銷) ---
+export async function removeCompanyDataAssignment(userId, assignmentId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 取得分配資訊
+    const { rows: assignment } = await sql`
+      SELECT company_id, record_count, start_record, end_record
+      FROM company_data_assignments
+      WHERE id = ${assignmentId};
+    `;
+
+    if (assignment.length === 0) {
+      return { success: false, error: '分配記錄不存在' };
+    }
+
+    const { company_id, record_count, start_record, end_record } = assignment[0];
+
+    // 刪除分配記錄
+    await sql`DELETE FROM company_data_assignments WHERE id = ${assignmentId};`;
+
+    // 更新公司已分配記錄數
+    const { rows: remainingCount } = await sql`
+      SELECT SUM(record_count) as total
+      FROM company_data_assignments
+      WHERE company_id = ${company_id};
+    `;
+
+    await sql`
+      UPDATE companies
+      SET assigned_records = ${remainingCount[0]?.total || 0},
+          updated_at = NOW()
+      WHERE id = ${company_id};
+    `;
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `已撤銷分配，釋放 ${record_count} 筆資料 (${start_record}-${end_record})`
+    };
+  } catch (error) {
+    console.error('移除分配失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得可用的資料範圍 (未被分配的範圍) ---
+export async function getAvailableRanges(userId, companyId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 取得公司總記錄數
+    const { rows: companyRows } = await sql`
+      SELECT total_records FROM companies WHERE id = ${companyId};
+    `;
+    if (companyRows.length === 0) {
+      return { success: false, error: '公司不存在' };
+    }
+    const totalRecords = companyRows[0].total_records;
+
+    // 取得已分配的範圍
+    const { rows: assignments } = await sql`
+      SELECT start_record, end_record
+      FROM company_data_assignments
+      WHERE company_id = ${companyId}
+      ORDER BY start_record;
+    `;
+
+    // 計算可用範圍
+    const availableRanges = [];
+    let currentStart = 1;
+
+    for (const assignment of assignments) {
+      if (currentStart < assignment.start_record) {
+        availableRanges.push({
+          start: currentStart,
+          end: assignment.start_record - 1,
+          count: assignment.start_record - currentStart
+        });
+      }
+      currentStart = assignment.end_record + 1;
+    }
+
+    // 檢查最後一個範圍
+    if (currentStart <= totalRecords) {
+      availableRanges.push({
+        start: currentStart,
+        end: totalRecords,
+        count: totalRecords - currentStart + 1
+      });
+    }
+
+    return { success: true, availableRanges, totalRecords };
+  } catch (error) {
+    console.error('取得可用範圍失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
