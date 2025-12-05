@@ -388,8 +388,8 @@ function AnnotationScreen({ user, project, onBack }) {
         setEvidenceStatus('');
         setEvidenceQuality('');
 
-        // 載入下一筆
-        const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
+        // 載入下一筆未標註的資料（而不是順序的下一筆）
+        const nextRes = await getNextTaskForUser(project.id, user.id);
         if (nextRes.task) {
             setCurrentItem(nextRes.task);
             loadTaskData(nextRes.task);
