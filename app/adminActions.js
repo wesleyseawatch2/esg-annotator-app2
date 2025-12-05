@@ -604,6 +604,131 @@ export async function deleteGroup(userId, groupId) {
   }
 }
 
+// ============ 公告管理功能 ============
+
+// --- 建立公告 ---
+export async function createAnnouncement(userId, { title, content, type = 'info', isActive = true }) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const result = await sql`
+      INSERT INTO announcements (title, content, type, is_active, created_by)
+      VALUES (${title}, ${content}, ${type}, ${isActive}, ${userId})
+      RETURNING id, title, content, type, is_active, created_at;
+    `;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: '公告建立成功',
+      announcement: result.rows[0]
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得所有公告（管理員用）---
+export async function getAllAnnouncements(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const { rows: announcements } = await sql`
+      SELECT
+        a.id,
+        a.title,
+        a.content,
+        a.type,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        u.username as created_by_username
+      FROM announcements a
+      LEFT JOIN users u ON a.created_by = u.id
+      ORDER BY a.created_at DESC;
+    `;
+
+    return { success: true, announcements };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 更新公告 ---
+export async function updateAnnouncement(userId, announcementId, { title, content, type, isActive }) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    await sql`
+      UPDATE announcements
+      SET
+        title = ${title},
+        content = ${content},
+        type = ${type},
+        is_active = ${isActive},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${announcementId};
+    `;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, message: '公告已更新' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 刪除公告 ---
+export async function deleteAnnouncement(userId, announcementId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    await sql`DELETE FROM announcements WHERE id = ${announcementId};`;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, message: '公告已刪除' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 切換公告啟用狀態 ---
+export async function toggleAnnouncementStatus(userId, announcementId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    await sql`
+      UPDATE announcements
+      SET is_active = NOT is_active,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${announcementId};
+    `;
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, message: '公告狀態已更新' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // ============ 原有功能 ============
 
 // --- 批次上傳組別資料（包含 PDF 分頁處理）---

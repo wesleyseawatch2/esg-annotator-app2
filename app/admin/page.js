@@ -8,7 +8,8 @@ import {
     diagnoseProject, exportProjectAnnotations, batchUploadGroupData,
     createProjectGroup, getAllGroups, assignUserToGroup, removeUserFromGroup,
     assignProjectToGroup, getGroupUsers, getAllUsersForAssignment, deleteGroup,
-    updateProjectName
+    updateProjectName, createAnnouncement, getAllAnnouncements, updateAnnouncement,
+    deleteAnnouncement, toggleAnnouncementStatus
 } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
@@ -45,6 +46,16 @@ export default function AdminPage() {
     const [allUsers, setAllUsers] = useState([]);
     const [isMigrated, setIsMigrated] = useState(false);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    // 公告管理相關狀態
+    const [showAnnouncementManagement, setShowAnnouncementManagement] = useState(false);
+    const [announcements, setAnnouncements] = useState([]);
+    const [announcementForm, setAnnouncementForm] = useState({
+        title: '',
+        content: '',
+        type: 'info',
+        isActive: true
+    });
+    const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
     const formRef = useRef(null);
     const batchFormRef = useRef(null);
     const router = useRouter();
@@ -702,6 +713,69 @@ export default function AdminPage() {
         }
     };
 
+    // ============ 公告管理函數 ============
+    const loadAnnouncements = async () => {
+        const result = await getAllAnnouncements(user.id);
+        if (result.success) {
+            setAnnouncements(result.announcements);
+        } else {
+            alert(`載入公告失敗: ${result.error}`);
+        }
+    };
+
+    const handleAnnouncementSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!announcementForm.title.trim() || !announcementForm.content.trim()) {
+            alert('標題和內容不能為空');
+            return;
+        }
+
+        const result = editingAnnouncementId
+            ? await updateAnnouncement(user.id, editingAnnouncementId, announcementForm)
+            : await createAnnouncement(user.id, announcementForm);
+
+        if (result.success) {
+            alert(result.message);
+            setAnnouncementForm({ title: '', content: '', type: 'info', isActive: true });
+            setEditingAnnouncementId(null);
+            await loadAnnouncements();
+        } else {
+            alert(`操作失敗: ${result.error}`);
+        }
+    };
+
+    const handleEditAnnouncement = (announcement) => {
+        setEditingAnnouncementId(announcement.id);
+        setAnnouncementForm({
+            title: announcement.title,
+            content: announcement.content,
+            type: announcement.type,
+            isActive: announcement.is_active
+        });
+    };
+
+    const handleDeleteAnnouncement = async (announcementId) => {
+        if (!confirm('確定要刪除這則公告嗎？')) return;
+
+        const result = await deleteAnnouncement(user.id, announcementId);
+        if (result.success) {
+            alert(result.message);
+            await loadAnnouncements();
+        } else {
+            alert(`刪除失敗: ${result.error}`);
+        }
+    };
+
+    const handleToggleAnnouncementStatus = async (announcementId) => {
+        const result = await toggleAnnouncementStatus(user.id, announcementId);
+        if (result.success) {
+            await loadAnnouncements();
+        } else {
+            alert(`切換狀態失敗: ${result.error}`);
+        }
+    };
+
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
 
     // 進度視圖 UI
@@ -1181,6 +1255,18 @@ export default function AdminPage() {
                     <button
                         className="btn"
                         onClick={async () => {
+                            setShowAnnouncementManagement(!showAnnouncementManagement);
+                            if (!showAnnouncementManagement) {
+                                await loadAnnouncements();
+                            }
+                        }}
+                        style={{ background: '#10b981', color: 'white', marginRight: '10px' }}
+                    >
+                        📢 {showAnnouncementManagement ? '關閉' : '開啟'}公告管理
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={async () => {
                             setShowGroupManagement(!showGroupManagement);
                             if (!showGroupManagement) {
                                 await loadGroups();
@@ -1203,6 +1289,178 @@ export default function AdminPage() {
                     <button className="btn" onClick={() => router.push('/')}>返回標註</button>
                 </div>
             </div>
+
+            {/* 公告管理區塊 */}
+            {showAnnouncementManagement && (
+                <div className="panel" style={{marginBottom: '20px', background: '#f0fdf4', borderLeft: '4px solid #10b981'}}>
+                    <h2>📢 公告管理</h2>
+
+                    {/* 新增/編輯公告表單 */}
+                    <div style={{marginBottom: '30px', padding: '15px', background: 'white', borderRadius: '8px'}}>
+                        <h3 style={{marginBottom: '15px'}}>
+                            {editingAnnouncementId ? '編輯公告' : '新增公告'}
+                        </h3>
+                        <form onSubmit={handleAnnouncementSubmit}>
+                            <div style={{display: 'grid', gap: '15px', marginBottom: '15px'}}>
+                                <div>
+                                    <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>標題 *</label>
+                                    <input
+                                        type="text"
+                                        value={announcementForm.title}
+                                        onChange={(e) => setAnnouncementForm({...announcementForm, title: e.target.value})}
+                                        required
+                                        placeholder="輸入公告標題..."
+                                        style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>內容 *</label>
+                                    <textarea
+                                        value={announcementForm.content}
+                                        onChange={(e) => setAnnouncementForm({...announcementForm, content: e.target.value})}
+                                        required
+                                        placeholder="輸入公告內容..."
+                                        rows={4}
+                                        style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                    />
+                                </div>
+                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px'}}>
+                                    <div>
+                                        <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>類型</label>
+                                        <select
+                                            value={announcementForm.type}
+                                            onChange={(e) => setAnnouncementForm({...announcementForm, type: e.target.value})}
+                                            style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                        >
+                                            <option value="info">一般訊息 (藍色)</option>
+                                            <option value="warning">警告 (橘色)</option>
+                                            <option value="success">成功 (綠色)</option>
+                                            <option value="error">錯誤 (紅色)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>狀態</label>
+                                        <select
+                                            value={announcementForm.isActive ? 'true' : 'false'}
+                                            onChange={(e) => setAnnouncementForm({...announcementForm, isActive: e.target.value === 'true'})}
+                                            style={{width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #d1d5db'}}
+                                        >
+                                            <option value="true">顯示</option>
+                                            <option value="false">隱藏</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <button type="submit" className="btn" style={{background: '#10b981', color: 'white'}}>
+                                    {editingAnnouncementId ? '✓ 更新公告' : '➕ 新增公告'}
+                                </button>
+                                {editingAnnouncementId && (
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() => {
+                                            setEditingAnnouncementId(null);
+                                            setAnnouncementForm({ title: '', content: '', type: 'info', isActive: true });
+                                        }}
+                                        style={{background: '#6b7280', color: 'white'}}
+                                    >
+                                        取消編輯
+                                    </button>
+                                )}
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* 公告列表 */}
+                    <div style={{padding: '15px', background: 'white', borderRadius: '8px'}}>
+                        <h3 style={{marginBottom: '15px'}}>現有公告</h3>
+                        {announcements.length === 0 ? (
+                            <p style={{color: '#6b7280', textAlign: 'center', padding: '20px'}}>尚無公告</p>
+                        ) : (
+                            <div style={{display: 'grid', gap: '15px'}}>
+                                {announcements.map(announcement => {
+                                    const typeColors = {
+                                        info: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
+                                        warning: { bg: '#fed7aa', border: '#f59e0b', text: '#92400e' },
+                                        success: { bg: '#d1fae5', border: '#10b981', text: '#065f46' },
+                                        error: { bg: '#fecaca', border: '#ef4444', text: '#991b1b' }
+                                    };
+                                    const colors = typeColors[announcement.type] || typeColors.info;
+
+                                    return (
+                                        <div
+                                            key={announcement.id}
+                                            style={{
+                                                padding: '15px',
+                                                background: colors.bg,
+                                                border: `2px solid ${colors.border}`,
+                                                borderRadius: '8px',
+                                                opacity: announcement.is_active ? 1 : 0.5
+                                            }}
+                                        >
+                                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px'}}>
+                                                <div style={{flex: 1}}>
+                                                    <h4 style={{margin: 0, marginBottom: '5px', color: colors.text}}>
+                                                        {announcement.title}
+                                                        {!announcement.is_active && <span style={{marginLeft: '10px', fontSize: '12px'}}>(隱藏中)</span>}
+                                                    </h4>
+                                                    <p style={{margin: 0, fontSize: '14px', color: colors.text, whiteSpace: 'pre-wrap'}}>
+                                                        {announcement.content}
+                                                    </p>
+                                                    <p style={{margin: 0, marginTop: '8px', fontSize: '12px', color: '#6b7280'}}>
+                                                        建立者: {announcement.created_by_username || '未知'} |
+                                                        建立時間: {new Date(announcement.created_at).toLocaleString('zh-TW')}
+                                                    </p>
+                                                </div>
+                                                <div style={{display: 'flex', gap: '8px', marginLeft: '15px'}}>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleToggleAnnouncementStatus(announcement.id)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            fontSize: '12px',
+                                                            background: announcement.is_active ? '#f59e0b' : '#10b981',
+                                                            color: 'white'
+                                                        }}
+                                                        title={announcement.is_active ? '隱藏公告' : '顯示公告'}
+                                                    >
+                                                        {announcement.is_active ? '👁️ 隱藏' : '👁️ 顯示'}
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleEditAnnouncement(announcement)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            fontSize: '12px',
+                                                            background: '#3b82f6',
+                                                            color: 'white'
+                                                        }}
+                                                    >
+                                                        ✏️ 編輯
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleDeleteAnnouncement(announcement.id)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            fontSize: '12px',
+                                                            background: '#ef4444',
+                                                            color: 'white'
+                                                        }}
+                                                    >
+                                                        🗑️ 刪除
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* 群組管理區塊 */}
             {showGroupManagement && (
