@@ -567,9 +567,29 @@ function AnnotationScreen({ user, project, onBack }) {
 
     const getHighlightedText = (type) => {
         if (!dataTextRef.current) return '';
-        return Array.from(dataTextRef.current.querySelectorAll(`.highlight-${type}`))
-            .map(el => el.textContent.trim())
-            .join(' ');
+
+        // 獲取純文本內容（用於計算位置）
+        const positions = [];
+
+        // 遍歷所有高亮元素，計算它們在純文本中的位置
+        const highlights = dataTextRef.current.querySelectorAll(`.highlight-${type}`);
+
+        highlights.forEach(el => {
+            // 計算這個元素在整個文本中的起始位置
+            const range = document.createRange();
+            range.selectNodeContents(dataTextRef.current);
+
+            // 創建一個範圍到元素開始位置
+            const preRange = range.cloneRange();
+            preRange.setEnd(el.firstChild || el, 0);
+            const startOffset = preRange.toString().length;
+            const endOffset = startOffset + el.textContent.length;
+
+            positions.push(`${startOffset}-${endOffset}`);
+        });
+
+        // 返回位置索引，例如：'10-15,45-50'
+        return positions.join(',');
     };
     
     const checkCurrentItemCompleteness = () => {
@@ -642,21 +662,85 @@ function AnnotationScreen({ user, project, onBack }) {
         // 先設定原始文本
         dataTextRef.current.innerHTML = task.original_data;
 
-        // 恢復承諾高亮
-        if (task.promise_string) {
+        // 獲取純文本內容
+        const plainText = dataTextRef.current.textContent;
+
+        // 恢復承諾高亮（使用位置索引）
+        if (task.promise_string && task.promise_string.includes('-')) {
+            // 新格式：位置索引（例如：'10-15,45-50'）
+            highlightByPositions(task.promise_string, 'promise', plainText);
+        } else if (task.promise_string) {
+            // 舊格式：文本（向後兼容）
             const promiseTexts = task.promise_string.split(' ').filter(t => t.trim());
             promiseTexts.forEach(text => {
                 highlightTextInContent(text.trim(), 'promise');
             });
         }
 
-        // 恢復證據高亮
-        if (task.evidence_string) {
+        // 恢復證據高亮（使用位置索引）
+        if (task.evidence_string && task.evidence_string.includes('-')) {
+            // 新格式：位置索引
+            highlightByPositions(task.evidence_string, 'evidence', plainText);
+        } else if (task.evidence_string) {
+            // 舊格式：文本（向後兼容）
             const evidenceTexts = task.evidence_string.split(' ').filter(t => t.trim());
             evidenceTexts.forEach(text => {
                 highlightTextInContent(text.trim(), 'evidence');
             });
         }
+    };
+
+    const highlightByPositions = (positionsStr, type, plainText) => {
+        if (!dataTextRef.current || !positionsStr) return;
+
+        // 解析位置索引：'10-15,45-50' -> [{start: 10, end: 15}, {start: 45, end: 50}]
+        const positions = positionsStr.split(',').map(pos => {
+            const [start, end] = pos.split('-').map(Number);
+            return { start, end };
+        });
+
+        // 從後往前處理（避免位置偏移）
+        positions.sort((a, b) => b.start - a.start);
+
+        positions.forEach(({ start, end }) => {
+            // 使用 TreeWalker 遍歷文本節點
+            const walker = document.createTreeWalker(
+                dataTextRef.current,
+                NodeFilter.SHOW_TEXT,
+                null
+            );
+
+            let currentOffset = 0;
+            let node;
+
+            while (node = walker.nextNode()) {
+                const nodeLength = node.textContent.length;
+                const nodeStart = currentOffset;
+                const nodeEnd = currentOffset + nodeLength;
+
+                // 檢查高亮範圍是否在這個文本節點內
+                if (start >= nodeStart && end <= nodeEnd) {
+                    // 高亮範圍完全在這個節點內
+                    const relativeStart = start - nodeStart;
+                    const relativeEnd = end - nodeStart;
+
+                    const range = document.createRange();
+                    range.setStart(node, relativeStart);
+                    range.setEnd(node, relativeEnd);
+
+                    const span = document.createElement('span');
+                    span.className = `highlight-${type}`;
+                    try {
+                        range.surroundContents(span);
+                    } catch (err) {
+                        console.warn('無法標記範圍:', err);
+                    }
+                    break;
+                }
+
+                currentOffset = nodeEnd;
+            }
+        });
     };
 
     const highlightTextInContent = (searchText, type) => {
