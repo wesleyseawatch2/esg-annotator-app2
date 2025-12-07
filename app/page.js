@@ -205,11 +205,11 @@ function AnnotationScreen({ user, project, onBack }) {
             } else {
                 dataTextRef.current.innerHTML = currentItem.original_data;
             }
-        } else if (currentItem === null) {
-            // 當完成所有標註時，自動執行驗證
+        } else if (currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0) {
+            // 只有在真正完成所有標註時（已完成 + 已跳過 = 總題數），才自動執行驗證
             handleValidateData();
         }
-    }, [currentItem]);
+    }, [currentItem, progress, skippedCount]);
 
     const loadTask = async () => {
         const taskRes = await getNextTaskForUser(project.id, user.id);
@@ -223,7 +223,10 @@ function AnnotationScreen({ user, project, onBack }) {
         const projRes = await getProjectsWithProgress(user.id);
         const proj = projRes.projects?.find(p => p.id === project.id);
         if (proj) {
-            setProgress({ completed: proj.completed_tasks, total: proj.total_tasks });
+            setProgress({
+                completed: parseInt(proj.completed_tasks) || 0,
+                total: parseInt(proj.total_tasks) || 0
+            });
         }
 
         // 載入所有任務及其狀態
@@ -337,7 +340,10 @@ function AnnotationScreen({ user, project, onBack }) {
         // 更新進度
         const projRes = await getProjectsWithProgress(user.id);
         const proj = projRes.projects?.find(p => p.id === project.id);
-        if (proj) setProgress({ completed: proj.completed_tasks, total: proj.total_tasks });
+        if (proj) setProgress({
+            completed: parseInt(proj.completed_tasks) || 0,
+            total: parseInt(proj.total_tasks) || 0
+        });
 
         // 重新載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
@@ -400,7 +406,10 @@ function AnnotationScreen({ user, project, onBack }) {
         // 更新進度和任務列表
         const projRes = await getProjectsWithProgress(user.id);
         const proj = projRes.projects?.find(p => p.id === project.id);
-        if (proj) setProgress({ completed: proj.completed_tasks, total: proj.total_tasks });
+        if (proj) setProgress({
+            completed: parseInt(proj.completed_tasks) || 0,
+            total: parseInt(proj.total_tasks) || 0
+        });
 
         // 重新載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
@@ -465,15 +474,22 @@ function AnnotationScreen({ user, project, onBack }) {
         });
 
         if (result.invalidCount === 0) {
+            // 計算未完成的題數
+            const remainingTasks = result.totalTasks - result.totalCompleted - skippedCount;
+
             const passMessage = [
                 '✅ 驗證通過！',
                 '',
                 `📊 統計資料：`,
+                `• 專案總題數：${result.totalTasks} 筆`,
                 `• 已完成標註：${result.totalCompleted} 筆`,
                 `• 不完整資料：0 筆`,
                 `• 待補資料：${skippedCount} 筆`,
+                `• 尚未標註：${remainingTasks} 筆`,
                 '',
-                '✨ 所有已完成的標註資料都符合要求！'
+                remainingTasks > 0
+                    ? `⚠️ 已完成的 ${result.totalCompleted} 筆資料都符合要求，但還有 ${remainingTasks} 筆尚未標註！\n\n💡 提醒：如果這是合併專案，部分資料可能由其他成員負責標註。`
+                    : '✨ 所有已完成的標註資料都符合要求！'
             ].join('\n');
 
             alert(passMessage);
@@ -490,14 +506,19 @@ function AnnotationScreen({ user, project, onBack }) {
             if (issueStats.noEvidenceMark > 0) statsLines.push(`  - 缺少證據標記：${issueStats.noEvidenceMark} 筆`);
             if (issueStats.noEvidenceQuality > 0) statsLines.push(`  - 未選擇證據品質：${issueStats.noEvidenceQuality} 筆`);
 
+            // 計算未完成的題數
+            const remainingTasks = result.totalTasks - result.totalCompleted - skippedCount;
+
             const summaryMessage = [
                 '⚠️ 發現不完整的資料',
                 '',
                 `📊 統計資料：`,
+                `• 專案總題數：${result.totalTasks} 筆`,
                 `• 已完成標註：${result.totalCompleted} 筆`,
                 `• 不完整資料：${result.invalidCount} 筆`,
                 ...statsLines,
                 `• 待補資料：${skippedCount} 筆`,
+                `• 尚未標註：${remainingTasks} 筆`,
                 '',
                 '📋 問題清單：',
                 issueList,
@@ -783,7 +804,7 @@ function AnnotationScreen({ user, project, onBack }) {
             </div>
 
             {currentItem === undefined && <div className="panel"><h2>讀取中...</h2></div>}
-            {currentItem === null && (
+            {currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0 && (
                 <div className="panel">
                     <h2>🎉 恭喜！您已完成此專案的所有標註！</h2>
                     <p style={{ marginTop: '20px', fontSize: '16px', color: '#666' }}>
@@ -791,6 +812,28 @@ function AnnotationScreen({ user, project, onBack }) {
                     </p>
                     <p style={{ marginTop: '10px', fontSize: '16px', color: '#666' }}>
                         您也可以點擊「← 上一筆」按鈕返回查看或修改已標註的項目。
+                    </p>
+                </div>
+            )}
+            {currentItem === null && !(progress.completed + skippedCount >= progress.total && progress.total > 0) && (
+                <div className="panel">
+                    <h2>📝 已完成當前可見範圍</h2>
+                    <p style={{ marginTop: '20px', fontSize: '16px', color: '#666' }}>
+                        您的進度：{progress.completed + skippedCount} / {progress.total}
+                    </p>
+                    <p style={{ marginTop: '10px', fontSize: '16px', color: '#666' }}>
+                        目前沒有更多可標註的資料。
+                    </p>
+                    <p style={{ marginTop: '10px', fontSize: '16px', color: '#888', fontSize: '14px' }}>
+                        💡 這可能是因為：
+                    </p>
+                    <ul style={{ marginTop: '5px', marginLeft: '20px', color: '#888', fontSize: '14px' }}>
+                        <li>您已完成分配給您的所有資料</li>
+                        <li>這是合併專案，其他資料由其他成員負責</li>
+                        <li>還有資料尚未開始標註（可使用跳到第幾筆功能查看）</li>
+                    </ul>
+                    <p style={{ marginTop: '15px', fontSize: '16px', color: '#666' }}>
+                        您可以點擊「<strong style={{ color: '#3b82f6' }}>← 上一筆</strong>」按鈕返回查看或修改已標註的項目。
                     </p>
                 </div>
             )}

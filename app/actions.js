@@ -56,6 +56,8 @@ export async function getProjectsWithProgress(userId) {
             FROM annotations a
             WHERE a.user_id = ${userId}
             AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+            AND a.status = 'completed'
+            AND (a.skipped IS NULL OR a.skipped = FALSE)
           ) as completed_tasks
         FROM projects p
         LEFT JOIN project_groups pg ON p.group_id = pg.id
@@ -77,6 +79,8 @@ export async function getProjectsWithProgress(userId) {
             FROM annotations a
             WHERE a.user_id = ${userId}
             AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+            AND a.status = 'completed'
+            AND (a.skipped IS NULL OR a.skipped = FALSE)
           ) as completed_tasks
         FROM projects p
         LEFT JOIN project_groups pg ON p.group_id = pg.id
@@ -169,23 +173,29 @@ export async function getPreviousTaskForUser(projectId, userId, currentId) {
 
 export async function getNextTaskAfterCurrent(projectId, userId, currentId) {
   try {
-    // 獲取當前 ID 之後的下一筆資料（不管是否已標註）
+    // 使用 ROW_NUMBER 來獲取當前項目之後的下一筆資料（按照 page_number 和 id 排序）
     const { rows } = await sql`
-      SELECT
-        sd.*,
-        a.esg_type,
-        a.promise_status,
-        a.promise_string,
-        a.verification_timeline,
-        a.evidence_status,
-        a.evidence_string,
-        a.evidence_quality
-      FROM source_data sd
-      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
-      WHERE sd.project_id = ${projectId}
-      AND sd.id > ${currentId}
-      ORDER BY sd.page_number ASC, sd.id ASC
-      LIMIT 1;
+      WITH numbered_tasks AS (
+        SELECT
+          sd.*,
+          a.esg_type,
+          a.promise_status,
+          a.promise_string,
+          a.verification_timeline,
+          a.evidence_status,
+          a.evidence_string,
+          a.evidence_quality,
+          ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as row_num
+        FROM source_data sd
+        LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+        WHERE sd.project_id = ${projectId}
+      ),
+      current_row AS (
+        SELECT row_num FROM numbered_tasks WHERE id = ${currentId}
+      )
+      SELECT nt.*
+      FROM numbered_tasks nt, current_row cr
+      WHERE nt.row_num = cr.row_num + 1;
     `;
 
     if (rows.length > 0) {
@@ -284,6 +294,15 @@ export async function getAllTasksWithStatus(projectId, userId) {
 
 export async function validateCompletedAnnotations(projectId, userId) {
   try {
+    // 首先獲取總題數
+    const { rows: totalRows } = await sql`
+      SELECT COUNT(*) as total
+      FROM source_data sd
+      WHERE sd.project_id = ${projectId};
+    `;
+    const totalTasks = parseInt(totalRows[0]?.total || 0);
+
+    // 獲取已完成（非跳過）的標註
     const { rows } = await sql`
       SELECT
         sd.id,
@@ -347,6 +366,7 @@ export async function validateCompletedAnnotations(projectId, userId) {
     });
 
     return {
+      totalTasks: totalTasks,
       totalCompleted: rows.length,
       invalidCount: invalidTasks.length,
       invalidTasks: invalidTasks.map(t => {
@@ -500,6 +520,8 @@ export async function getAllUsersProgress() {
           FROM annotations a
           WHERE a.user_id = u.id
           AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
+          AND a.status = 'completed'
+          AND (a.skipped IS NULL OR a.skipped = FALSE)
         ) as completed_tasks
       FROM user_group_permissions ugp
       JOIN users u ON ugp.user_id = u.id
