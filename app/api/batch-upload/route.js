@@ -157,7 +157,11 @@ export async function POST(request) {
               for (const pdfFile of pdfs) {
                 try {
                   const pdfArrayBuffer = await pdfFile.arrayBuffer();
-                  const pdfDoc = await PDFDocument.load(pdfArrayBuffer);
+                  // 載入時保留所有資源，包括字體
+                  const pdfDoc = await PDFDocument.load(pdfArrayBuffer, {
+                    updateMetadata: false,
+                    ignoreEncryption: true
+                  });
                   const pdfPageCount = pdfDoc.getPageCount();
                   totalPdfPages += pdfPageCount;
 
@@ -166,7 +170,13 @@ export async function POST(request) {
                     const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
                     newPdf.addPage(copiedPage);
 
-                    const pdfBytes = await newPdf.save();
+                    // 保存時使用選項來保留字體和資源
+                    const pdfBytes = await newPdf.save({
+                      useObjectStreams: false,  // 避免對象流壓縮導致字體丟失
+                      addDefaultPage: false,     // 不添加默認頁面
+                      objectsPerTick: Infinity   // 一次性處理所有對象
+                    });
+
                     const pageNumber = i + 1;
                     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
 

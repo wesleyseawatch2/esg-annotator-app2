@@ -23,12 +23,18 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
             setIsLoading(false);
             return;
         }
-        
+
         setIsLoading(true);
         setError('');
         setPdfDoc(null);
 
-        const loadingTask = pdfjsLib.getDocument(pdfUrl);
+        const loadingTask = pdfjsLib.getDocument({
+            url: pdfUrl,
+            // 添加 CMap 配置（修復字體載入問題）
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/cmaps/',
+            cMapPacked: true
+        });
+
         loadingTask.promise.then(doc => {
             setPdfDoc(doc);
             const initialPage = pageNumber > 0 && pageNumber <= doc.numPages ? pageNumber : 1;
@@ -66,10 +72,10 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
 
             const renderTask = page.render({ canvasContext: context, viewport: viewport });
             canvas._renderTask = renderTask;
-            
+
             await renderTask.promise;
             canvas._renderTask = null;
-            
+
             setPageInfo(`頁碼: ${pageNum} / ${pdfDoc.numPages}`);
         } catch (err) {
             if (err.name === 'RenderingCancelledException') {
@@ -79,13 +85,13 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
             setError(`渲染頁面 ${pageNum} 失敗`);
         }
     };
-    
+
     const drawBoundingBox = () => {
         const canvas = canvasRef.current;
         if (!canvas || !bbox || bbox.length !== 4 || !pageHeight) return null;
 
         const [x0, y0, x1, y1] = bbox;
-        
+
         const style = {
             position: 'absolute',
             left: `${x0 * scale}px`,
@@ -97,7 +103,7 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
             pointerEvents: 'none',
             boxSizing: 'border-box'
         };
-        
+
         return <div style={style}></div>;
     };
 
@@ -107,7 +113,7 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
             setCurrentPage(newPage);
         }
     };
-    
+
     const changeZoom = (offset) => {
         const newScale = scale + offset;
         if (newScale > 0.5 && newScale < 3) {
