@@ -1324,6 +1324,30 @@ function AnnotationScreen({ user, project, onBack }) {
                     </div>
                 </div>
 
+                {/* --- 教育訓練文件連結區 --- */}
+                    <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', gap: '15px', fontSize: '14px' }}>
+                        <span style={{ fontWeight: 'bold', color: '#4b5563' }}>📚 參考資源：</span>
+                        <a 
+                            href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}
+                            title="查看 HackMD 標註手冊"
+                        >
+                            📖 AI CUP 標註手冊 V2
+                        </a>
+                        <span style={{ color: '#cbd5e1' }}>|</span>
+                        <a 
+                            href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}
+                            title="查看教育訓練投影片"
+                        >
+                            📊 教育訓練投影片
+                        </a>
+                    </div>
+
                 {/* 批次對齊進度顯示 */}
                 {batchAlignProgress && (
                     <div style={{
