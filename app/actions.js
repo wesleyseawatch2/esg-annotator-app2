@@ -556,3 +556,48 @@ export async function getActiveAnnouncements() {
     return { success: false, error: error.message };
   }
 }
+
+// --- 更新資料的 PDF 頁碼（僅限 admin）---
+export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, userId) {
+  try {
+    // 驗證使用者是否為 admin
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足，僅管理員可調整頁碼' };
+    }
+
+    // 取得該資料所屬的專案，以獲取 pdf_urls
+    const { rows: dataRows } = await sql`
+      SELECT sd.project_id, p.pdf_urls
+      FROM source_data sd
+      JOIN projects p ON sd.project_id = p.id
+      WHERE sd.id = ${sourceDataId};
+    `;
+
+    if (dataRows.length === 0) {
+      return { success: false, error: '找不到該筆資料' };
+    }
+
+    const projectId = dataRows[0].project_id;
+    const pdfUrls = dataRows[0].pdf_urls;
+
+    // 從 pdf_urls 中找到對應的 URL
+    const newPdfUrl = pdfUrls[newPageNumber] || null;
+
+    if (!newPdfUrl) {
+      return { success: false, error: `找不到第 ${newPageNumber} 頁的 PDF` };
+    }
+
+    // 更新資料的 page_number 和 source_url
+    await sql`
+      UPDATE source_data
+      SET page_number = ${newPageNumber}, source_url = ${newPdfUrl}
+      WHERE id = ${sourceDataId};
+    `;
+
+    revalidatePath('/');
+    return { success: true, newPageNumber, newPdfUrl };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}

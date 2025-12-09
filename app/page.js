@@ -15,7 +15,8 @@ import {
   validateCompletedAnnotations,
   resetProjectAnnotations,
   saveAnnotation,
-  getActiveAnnouncements
+  getActiveAnnouncements,
+  updateSourceDataPageNumber
 } from './actions';
 import dynamic from 'next/dynamic';
 
@@ -193,6 +194,12 @@ function AnnotationScreen({ user, project, onBack }) {
     const [allTasks, setAllTasks] = useState([]);
     const [selectedSequence, setSelectedSequence] = useState('');
     const [validationResult, setValidationResult] = useState(null);
+    const [showPageAdjust, setShowPageAdjust] = useState(false);
+    const [newPageNumber, setNewPageNumber] = useState('');
+    const [autoAlignProgress, setAutoAlignProgress] = useState(null);
+    const [suggestedPage, setSuggestedPage] = useState(null);
+    const [batchAlignProgress, setBatchAlignProgress] = useState(null);
+    const [showBatchResult, setShowBatchResult] = useState(false);
     const dataTextRef = useRef(null);
 
     useEffect(() => { loadTask(); }, []);
@@ -440,6 +447,392 @@ function AnnotationScreen({ user, project, onBack }) {
             setSelectedSequence('');
         } else {
             alert(`找不到第 ${seqNum} 筆資料`);
+        }
+    };
+
+    const handlePageNumberAdjust = async () => {
+        if (!currentItem) return;
+        if (!newPageNumber || newPageNumber.trim() === '') {
+            alert('請輸入新的頁碼');
+            return;
+        }
+
+        const pageNum = parseInt(newPageNumber);
+        if (isNaN(pageNum) || pageNum < 1) {
+            alert('請輸入有效的頁碼（大於 0 的整數）');
+            return;
+        }
+
+        if (confirm(`確定要將此筆資料的頁碼從 ${currentItem.page_number} 調整為 ${pageNum} 嗎？`)) {
+            const result = await updateSourceDataPageNumber(currentItem.id, pageNum, user.id);
+            if (result.success) {
+                alert(`頁碼調整成功！\n新頁碼：${result.newPageNumber}\n新 PDF URL：${result.newPdfUrl}`);
+                // 重新載入當前資料
+                const res = await getTaskBySequence(project.id, user.id, allTasks.find(t => t.id === currentItem.id)?.sequence);
+                if (res.task) {
+                    setCurrentItem(res.task);
+                    loadTaskData(res.task);
+                }
+                setShowPageAdjust(false);
+                setNewPageNumber('');
+                setSuggestedPage(null);
+            } else {
+                alert(`調整失敗：${result.error}`);
+            }
+        }
+    };
+
+    const handleAutoAlign = async () => {
+        if (!currentItem) return;
+
+        try {
+            setAutoAlignProgress({ current: 0, total: 0, status: '準備中...' });
+            setSuggestedPage(null);
+
+            // 動態載入 pdfjs-dist
+            const pdfjsLib = await import('pdfjs-dist');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+            // 取得專案的所有 PDF URLs（從第一筆資料獲取）
+            const projectData = await fetch('/api/get-project-pdf-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id })
+            });
+            const { pdfUrls } = await projectData.json();
+
+            if (!pdfUrls || Object.keys(pdfUrls).length === 0) {
+                alert('找不到專案的 PDF 檔案');
+                setAutoAlignProgress(null);
+                return;
+            }
+
+            // 取得當前資料的文本（移除多餘空白）
+            const targetText = currentItem.original_data.replace(/\s+/g, ' ').trim().toLowerCase();
+            const totalPages = Object.keys(pdfUrls).length;
+
+            setAutoAlignProgress({ current: 0, total: totalPages, status: '開始分析...' });
+
+            let bestMatch = { pageNumber: null, similarity: 0 };
+            const searchRange = 20; // 搜尋範圍：當前頁前後 20 頁
+            const currentPage = currentItem.page_number;
+            const startPage = Math.max(1, currentPage - searchRange);
+            const endPage = Math.min(totalPages, currentPage + searchRange);
+
+            // 只搜尋範圍內的頁面
+            for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+                const pdfUrl = pdfUrls[pageNum];
+                if (!pdfUrl) continue;
+
+                setAutoAlignProgress({
+                    current: pageNum - startPage + 1,
+                    total: endPage - startPage + 1,
+                    status: `分析第 ${pageNum} 頁...`
+                });
+
+                try {
+                    // 載入 PDF
+                    const loadingTask = pdfjsLib.getDocument({
+                        url: pdfUrl,
+                        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/cmaps/',
+                        cMapPacked: true
+                    });
+                    const pdf = await loadingTask.promise;
+                    const page = await pdf.getPage(1); // 每個 PDF 只有一頁
+                    const textContent = await page.getTextContent();
+
+                    // 提取文本
+                    const pageText = textContent.items
+                        .map(item => item.str)
+                        .join(' ')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .toLowerCase();
+
+                    // 計算相似度
+                    let similarity = 0;
+
+                    // 重要：檢查「資料庫文本」是否在「PDF 文本」中
+                    // 如果 PDF 包含資料庫的文本 = 找到正確頁面
+                    if (pageText.includes(targetText)) {
+                        similarity = 100; // PDF 完全包含資料庫文本
+                    } else {
+                        // 計算相似度：看有多少資料庫文本的字符出現在 PDF 中
+                        const targetChars = new Set(targetText.split(''));
+                        const pageChars = new Set(pageText.split(''));
+                        const intersection = new Set([...targetChars].filter(x => pageChars.has(x)));
+                        similarity = (intersection.size / targetChars.size) * 100;
+                    }
+
+                    if (similarity > bestMatch.similarity) {
+                        bestMatch = { pageNumber: pageNum, similarity };
+                    }
+
+                    // 如果找到完全匹配，提前結束
+                    if (similarity === 100) break;
+
+                } catch (err) {
+                    console.error(`分析第 ${pageNum} 頁時發生錯誤:`, err);
+                }
+            }
+
+            setAutoAlignProgress(null);
+
+            if (bestMatch.pageNumber) {
+                setSuggestedPage(bestMatch);
+                setNewPageNumber(bestMatch.pageNumber.toString());
+
+                if (bestMatch.similarity === 100) {
+                    alert(`找到完全匹配的頁面！\n建議頁碼：第 ${bestMatch.pageNumber} 頁\n相似度：${bestMatch.similarity.toFixed(1)}%`);
+                } else {
+                    alert(`找到最相似的頁面\n建議頁碼：第 ${bestMatch.pageNumber} 頁\n相似度：${bestMatch.similarity.toFixed(1)}%\n\n請確認後再點擊「確認調整」`);
+                }
+            } else {
+                alert('找不到匹配的頁面，請手動輸入頁碼');
+            }
+
+        } catch (error) {
+            console.error('自動對齊錯誤:', error);
+            alert(`自動對齊失敗：${error.message}`);
+            setAutoAlignProgress(null);
+        }
+    };
+
+    const handleBatchAutoAlign = async () => {
+        if (!confirm(`確定要對整個專案「${project.name}」執行批次自動對齊嗎？\n\n此操作會：\n1. 掃描所有資料\n2. 自動比對 PDF 頁面\n3. 更新不正確的頁碼\n\n此過程可能需要幾分鐘，請耐心等待。`)) {
+            return;
+        }
+
+        try {
+            setBatchAlignProgress({
+                current: 0,
+                total: 0,
+                status: '準備中...',
+                alignedCount: 0,
+                skippedCount: 0,
+                errorCount: 0,
+                details: []
+            });
+            setShowBatchResult(false);
+
+            // 動態載入 pdfjs-dist
+            const pdfjsLib = await import('pdfjs-dist');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+            // 取得專案的所有 PDF URLs
+            const projectData = await fetch('/api/get-project-pdf-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id })
+            });
+            const { pdfUrls } = await projectData.json();
+
+            if (!pdfUrls || Object.keys(pdfUrls).length === 0) {
+                alert('找不到專案的 PDF 檔案');
+                setBatchAlignProgress(null);
+                return;
+            }
+
+            // 取得所有資料
+            const allTasksData = await fetch('/api/get-all-project-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id, userId: user.id })
+            });
+            const { data: allData } = await allTasksData.json();
+
+            if (!allData || allData.length === 0) {
+                alert('專案沒有資料');
+                setBatchAlignProgress(null);
+                return;
+            }
+
+            setBatchAlignProgress(prev => ({
+                ...prev,
+                total: allData.length,
+                status: `開始處理 ${allData.length} 筆資料...`
+            }));
+
+            const totalPages = Object.keys(pdfUrls).length;
+            let alignedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            const details = [];
+
+            // 預先載入所有 PDF 文本
+            setBatchAlignProgress(prev => ({ ...prev, status: '預先載入 PDF 文本...' }));
+            const pdfTextCache = {};
+
+            for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                const pdfUrl = pdfUrls[pageNum];
+                if (!pdfUrl) continue;
+
+                try {
+                    const loadingTask = pdfjsLib.getDocument({
+                        url: pdfUrl,
+                        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/cmaps/',
+                        cMapPacked: true
+                    });
+                    const pdf = await loadingTask.promise;
+                    const page = await pdf.getPage(1);
+                    const textContent = await page.getTextContent();
+
+                    const pageText = textContent.items
+                        .map(item => item.str)
+                        .join(' ')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .toLowerCase();
+
+                    pdfTextCache[pageNum] = pageText;
+                    console.log(`[PDF 載入] 第 ${pageNum} 頁，文本長度: ${pageText.length}`);
+                } catch (err) {
+                    console.error(`載入第 ${pageNum} 頁時發生錯誤:`, err);
+                    pdfTextCache[pageNum] = '';
+                }
+            }
+
+            // 處理每筆資料
+            for (let i = 0; i < allData.length; i++) {
+                const dataItem = allData[i];
+
+                setBatchAlignProgress(prev => ({
+                    ...prev,
+                    current: i + 1,
+                    status: `處理第 ${i + 1}/${allData.length} 筆 (ID: ${dataItem.id})...`
+                }));
+
+                try {
+                    const targetText = dataItem.original_data.replace(/\s+/g, ' ').trim().toLowerCase();
+                    let bestMatch = { pageNumber: null, similarity: 0 };
+
+                    const searchRange = 20;
+                    const currentPage = dataItem.page_number;
+                    const startPage = Math.max(1, currentPage - searchRange);
+                    const endPage = Math.min(totalPages, currentPage + searchRange);
+
+                    // 搜尋最佳匹配
+                    for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+                        const pageText = pdfTextCache[pageNum];
+                        if (!pageText) continue;
+
+                        let similarity = 0;
+
+                        if (pageText.includes(targetText)) {
+                            similarity = 100;
+                        } else {
+                            const targetChars = new Set(targetText.split(''));
+                            const pageChars = new Set(pageText.split(''));
+                            const intersection = new Set([...targetChars].filter(x => pageChars.has(x)));
+                            similarity = (intersection.size / targetChars.size) * 100;
+                        }
+
+                        if (similarity > bestMatch.similarity) {
+                            bestMatch = { pageNumber: pageNum, similarity };
+                        }
+
+                        if (similarity === 100) break;
+                    }
+
+                    console.log(`[比對] ID ${dataItem.id}: 當前頁=${currentPage}, 最佳匹配=${bestMatch.pageNumber}, 相似度=${bestMatch.similarity.toFixed(1)}%`);
+
+                    // 如果找到匹配且與當前頁碼不同，則更新
+                    if (bestMatch.pageNumber && bestMatch.pageNumber !== dataItem.page_number && bestMatch.similarity >= 50) {
+                        const result = await updateSourceDataPageNumber(dataItem.id, bestMatch.pageNumber, user.id);
+
+                        if (result.success) {
+                            alignedCount++;
+                            details.push({
+                                id: dataItem.id,
+                                oldPage: dataItem.page_number,
+                                newPage: bestMatch.pageNumber,
+                                similarity: bestMatch.similarity.toFixed(1)
+                            });
+                        } else {
+                            errorCount++;
+                        }
+                    } else {
+                        skippedCount++;
+                        // 記錄跳過原因
+                        if (!bestMatch.pageNumber || bestMatch.similarity < 50) {
+                            console.log(`[跳過] ID ${dataItem.id}: 找不到足夠相似的頁面 (最佳匹配: ${bestMatch.pageNumber || 'N/A'}, 相似度: ${bestMatch.similarity.toFixed(1)}%)`);
+                        } else {
+                            console.log(`[跳過] ID ${dataItem.id}: 頁碼已正確 (當前頁=${currentPage}, 最佳匹配=${bestMatch.pageNumber})`);
+                        }
+                    }
+
+                } catch (error) {
+                    console.error(`處理資料 ${dataItem.id} 時發生錯誤:`, error);
+                    errorCount++;
+                }
+            }
+
+            // 完成
+            setBatchAlignProgress({
+                current: allData.length,
+                total: allData.length,
+                status: '完成！',
+                alignedCount,
+                skippedCount,
+                errorCount,
+                details,
+                completed: true
+            });
+            setShowBatchResult(true);
+
+            // 重新載入當前任務
+            loadTask();
+
+            alert(`批次對齊完成！\n\n總共處理：${allData.length} 筆\n已調整：${alignedCount} 筆\n跳過：${skippedCount} 筆\n錯誤：${errorCount} 筆`);
+
+            // 如果有跳過的資料，檢查是否有 URL 不匹配的問題
+            if (skippedCount > 0) {
+                const checkResult = await fetch('/api/check-skipped-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId: project.id, userId: user.id })
+                });
+                const { mismatches, mismatch_count } = await checkResult.json();
+
+                if (mismatch_count > 0) {
+                    console.log(`[資料庫檢查] 發現 ${mismatch_count} 筆 URL 不匹配的資料:`, mismatches);
+                    alert(`⚠️ 發現 ${mismatch_count} 筆資料的 URL 與頁碼不匹配！\n請查看 Console 了解詳情。`);
+                }
+            }
+
+        } catch (error) {
+            console.error('批次對齊錯誤:', error);
+            alert(`批次對齊失敗：${error.message}`);
+            setBatchAlignProgress(null);
+        }
+    };
+
+    const handleAutoFixUrlMismatch = async () => {
+        if (!confirm('確定要自動修復所有 URL 與頁碼不匹配的資料嗎？\n\n此操作會將 source_url 更新為對應頁碼的正確 URL。')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auto-fix-url-mismatch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id, userId: user.id })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('[自動修復結果]', result);
+                alert(`✅ 自動修復完成！\n\n總共檢查：${result.total} 筆\n已修復：${result.fixed_count} 筆\n錯誤：${result.error_count} 筆\n\n請查看 Console 了解詳情。`);
+
+                // 重新載入當前任務
+                loadTask();
+            } else {
+                alert(`修復失敗：${result.error}`);
+            }
+        } catch (error) {
+            console.error('自動修復錯誤:', error);
+            alert(`自動修復失敗：${error.message}`);
         }
     };
 
@@ -770,6 +1163,33 @@ function AnnotationScreen({ user, project, onBack }) {
                 <h1>{project.name} - 標註工具</h1>
                 <div className="controls">
                     <button onClick={onBack} className="btn">返回專案列表</button>
+                    {user.role === 'admin' && (
+                        <button
+                            onClick={handleBatchAutoAlign}
+                            disabled={!!batchAlignProgress && !batchAlignProgress.completed}
+                            className="btn"
+                            style={{
+                                background: '#8b5cf6',
+                                color: 'white',
+                                marginLeft: '10px'
+                            }}
+                        >
+                            🤖 批次自動對齊
+                        </button>
+                    )}
+                    {user.role === 'admin' && (
+                        <button
+                            onClick={handleAutoFixUrlMismatch}
+                            className="btn"
+                            style={{
+                                background: '#10b981',
+                                color: 'white',
+                                marginLeft: '10px'
+                            }}
+                        >
+                            🔗 修復 URL 不匹配
+                        </button>
+                    )}
                     <button
                         onClick={handleValidateData}
                         className="btn"
@@ -885,6 +1305,74 @@ function AnnotationScreen({ user, project, onBack }) {
                         </button>
                     </div>
                 </div>
+
+                {/* 批次對齊進度顯示 */}
+                {batchAlignProgress && (
+                    <div style={{
+                        background: batchAlignProgress.completed ? '#d1fae5' : '#fef3c7',
+                        border: `2px solid ${batchAlignProgress.completed ? '#10b981' : '#f59e0b'}`,
+                        borderRadius: '8px',
+                        padding: '15px',
+                        marginTop: '15px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <strong style={{ fontSize: '16px' }}>
+                                {batchAlignProgress.completed ? '✓ 批次對齊完成' : '🤖 批次對齊進行中...'}
+                            </strong>
+                            {batchAlignProgress.completed && (
+                                <button
+                                    onClick={() => setBatchAlignProgress(null)}
+                                    style={{
+                                        background: '#6b7280',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '5px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    關閉
+                                </button>
+                            )}
+                        </div>
+                        <div style={{ fontSize: '14px', marginBottom: '10px' }}>
+                            {batchAlignProgress.status}
+                        </div>
+                        <div style={{ display: 'flex', gap: '20px', fontSize: '13px', marginBottom: '10px' }}>
+                            <span>進度：{batchAlignProgress.current} / {batchAlignProgress.total}</span>
+                            <span style={{ color: '#10b981' }}>✓ 已調整：{batchAlignProgress.alignedCount}</span>
+                            <span style={{ color: '#6b7280' }}>○ 跳過：{batchAlignProgress.skippedCount}</span>
+                            {batchAlignProgress.errorCount > 0 && (
+                                <span style={{ color: '#dc2626' }}>✗ 錯誤：{batchAlignProgress.errorCount}</span>
+                            )}
+                        </div>
+                        {!batchAlignProgress.completed && batchAlignProgress.total > 0 && (
+                            <div style={{ background: '#e5e7eb', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${(batchAlignProgress.current / batchAlignProgress.total) * 100}%`,
+                                    background: '#8b5cf6',
+                                    height: '100%',
+                                    transition: 'width 0.3s'
+                                }}></div>
+                            </div>
+                        )}
+                        {batchAlignProgress.completed && batchAlignProgress.details && batchAlignProgress.details.length > 0 && (
+                            <details style={{ marginTop: '10px', fontSize: '12px' }}>
+                                <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+                                    查看調整詳情 ({batchAlignProgress.details.length} 筆)
+                                </summary>
+                                <div style={{ marginTop: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {batchAlignProgress.details.map((detail, idx) => (
+                                        <div key={idx} style={{ padding: '5px 0', borderBottom: '1px solid #e5e7eb' }}>
+                                            資料 ID {detail.id}: 第 {detail.oldPage} 頁 → 第 {detail.newPage} 頁 (相似度: {detail.similarity}%)
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                )}
             </div>
 
             {currentItem === undefined && <div className="panel"><h2>讀取中...</h2></div>}
@@ -1056,8 +1544,128 @@ function AnnotationScreen({ user, project, onBack }) {
                         </div>
                     </div>
                      <div className="panel">
-                       <PDFViewer 
-                           pdfUrl={currentItem.source_url} 
+                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                         <h3 style={{ margin: 0 }}>PDF 文件</h3>
+                         {user.role === 'admin' && (
+                           <button
+                             onClick={() => setShowPageAdjust(!showPageAdjust)}
+                             className="btn"
+                             style={{
+                               background: '#f59e0b',
+                               color: 'white',
+                               padding: '5px 10px',
+                               fontSize: '12px'
+                             }}
+                           >
+                             {showPageAdjust ? '取消調整' : '🔧 調整頁碼'}
+                           </button>
+                         )}
+                       </div>
+
+                       {showPageAdjust && user.role === 'admin' && (
+                         <div style={{
+                           background: '#fef3c7',
+                           border: '2px solid #f59e0b',
+                           borderRadius: '8px',
+                           padding: '15px',
+                           marginBottom: '15px'
+                         }}>
+                           <div style={{ marginBottom: '10px' }}>
+                             <strong>當前頁碼：</strong>{currentItem.page_number}
+                           </div>
+                           <div style={{ marginBottom: '10px' }}>
+                             <strong>資料 ID：</strong>{currentItem.id}
+                           </div>
+
+                           {/* 自動對齊按鈕 */}
+                           <div style={{ marginBottom: '15px' }}>
+                             <button
+                               onClick={handleAutoAlign}
+                               disabled={!!autoAlignProgress}
+                               className="btn"
+                               style={{
+                                 background: '#3b82f6',
+                                 color: 'white',
+                                 padding: '8px 15px',
+                                 width: '100%',
+                                 fontSize: '14px'
+                               }}
+                             >
+                               {autoAlignProgress ? '分析中...' : '🔍 自動尋找正確頁碼'}
+                             </button>
+                           </div>
+
+                           {/* 進度顯示 */}
+                           {autoAlignProgress && (
+                             <div style={{
+                               background: '#dbeafe',
+                               border: '1px solid #3b82f6',
+                               borderRadius: '4px',
+                               padding: '10px',
+                               marginBottom: '15px'
+                             }}>
+                               <div style={{ fontSize: '13px', marginBottom: '5px' }}>
+                                 {autoAlignProgress.status}
+                               </div>
+                               <div style={{ fontSize: '12px', color: '#1e40af' }}>
+                                 進度：{autoAlignProgress.current} / {autoAlignProgress.total}
+                               </div>
+                             </div>
+                           )}
+
+                           {/* 建議結果 */}
+                           {suggestedPage && (
+                             <div style={{
+                               background: '#d1fae5',
+                               border: '2px solid #10b981',
+                               borderRadius: '4px',
+                               padding: '10px',
+                               marginBottom: '15px'
+                             }}>
+                               <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '5px' }}>
+                                 ✓ 建議頁碼：第 {suggestedPage.pageNumber} 頁
+                               </div>
+                               <div style={{ fontSize: '12px', color: '#065f46' }}>
+                                 相似度：{suggestedPage.similarity.toFixed(1)}%
+                               </div>
+                             </div>
+                           )}
+
+                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                             <label style={{ whiteSpace: 'nowrap' }}>調整為頁碼：</label>
+                             <input
+                               type="number"
+                               min="1"
+                               value={newPageNumber}
+                               onChange={(e) => setNewPageNumber(e.target.value)}
+                               placeholder="輸入新頁碼"
+                               style={{
+                                 padding: '5px 10px',
+                                 border: '1px solid #ccc',
+                                 borderRadius: '4px',
+                                 width: '100px'
+                               }}
+                             />
+                             <button
+                               onClick={handlePageNumberAdjust}
+                               className="btn"
+                               style={{
+                                 background: '#10b981',
+                                 color: 'white',
+                                 padding: '5px 15px'
+                               }}
+                             >
+                               確認調整
+                             </button>
+                           </div>
+                           <div style={{ marginTop: '10px', fontSize: '12px', color: '#92400e' }}>
+                             ⚠️ 注意：調整頁碼會同時更新 PDF URL，請確認新頁碼正確
+                           </div>
+                         </div>
+                       )}
+
+                       <PDFViewer
+                           pdfUrl={currentItem.source_url}
                            pageNumber={currentItem.page_number}
                            bbox={currentItem.bbox}
                        />
