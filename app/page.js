@@ -36,7 +36,7 @@ function LoginRegisterScreen({ onLoginSuccess }) {
       setMessage('使用者名稱和密碼不能為空');
       return;
     }
-    setMessage('處理中...');
+    setMessage('載入中...');
     let result;
     if (isLogin) {
       result = await loginUser(username, password);
@@ -56,6 +56,12 @@ function LoginRegisterScreen({ onLoginSuccess }) {
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSubmit();
+    }
+  };
+
   return (
     <div className="modal" style={{ display: 'block' }}>
       <div className="modal-content">
@@ -63,8 +69,20 @@ function LoginRegisterScreen({ onLoginSuccess }) {
           <img src="/ntpu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto' }} />
         </div>
         <h2>{isLogin ? '登入' : '註冊'}</h2>
-        <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="使用者名稱" />
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="密碼" />
+        <input 
+          type="text" 
+          value={username} 
+          onChange={e => setUsername(e.target.value)} 
+          onKeyDown={handleKeyDown}
+          placeholder="使用者名稱" 
+        />
+        <input 
+          type="password" 
+          value={password} 
+          onChange={e => setPassword(e.target.value)} 
+          onKeyDown={handleKeyDown}
+          placeholder="密碼" 
+        />
         <button onClick={handleSubmit}>{isLogin ? '登入' : '註冊'}</button>
         <p style={{ color: message.includes('失敗') ? 'red' : 'green', marginTop: '10px', height: '20px' }}>{message}</p>
         <button onClick={() => {setIsLogin(!isLogin); setMessage('');}} style={{ background: 'grey', marginTop: '10px' }}>
