@@ -2,9 +2,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
     const canvasRef = useRef(null);
@@ -16,11 +13,22 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [pageHeight, setPageHeight] = useState(0);
+    const [pdfjsLib, setPdfjsLib] = useState(null);
+
+    // 動態載入 pdfjs-dist（僅在客戶端）
+    useEffect(() => {
+        import('pdfjs-dist').then((pdfjs) => {
+            pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+            setPdfjsLib(pdfjs);
+        });
+    }, []);
 
     useEffect(() => {
-        if (!pdfUrl) {
-            setError('沒有提供 PDF 網址');
-            setIsLoading(false);
+        if (!pdfjsLib || !pdfUrl) {
+            if (!pdfUrl) {
+                setError('沒有提供 PDF 網址');
+                setIsLoading(false);
+            }
             return;
         }
 
@@ -45,7 +53,7 @@ export default function PDFViewer({ pdfUrl, pageNumber, bbox }) {
             setError(`無法載入 PDF: ${err.message}`);
             setIsLoading(false);
         });
-    }, [pdfUrl, pageNumber]);
+    }, [pdfjsLib, pdfUrl, pageNumber]);
 
     useEffect(() => {
         if (!pdfDoc) return;
