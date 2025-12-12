@@ -134,7 +134,8 @@ export async function getPreviousTaskForUser(projectId, userId, currentId) {
             a.verification_timeline,
             a.evidence_status,
             a.evidence_string,
-            a.evidence_quality
+            a.evidence_quality,
+            a.is_marked
           FROM source_data sd
           JOIN annotations a ON sd.id = a.source_data_id
           WHERE sd.project_id = ${projectId}
@@ -151,7 +152,8 @@ export async function getPreviousTaskForUser(projectId, userId, currentId) {
             a.verification_timeline,
             a.evidence_status,
             a.evidence_string,
-            a.evidence_quality
+            a.evidence_quality,
+            a.is_marked
           FROM source_data sd
           JOIN annotations a ON sd.id = a.source_data_id
           WHERE sd.project_id = ${projectId}
@@ -274,6 +276,7 @@ export async function getAllTasksWithStatus(projectId, userId) {
         sd.page_number,
         sd.original_data,
         a.skipped,
+        a.is_marked,
         a.status,
         a.promise_status,
         a.promise_string,
@@ -428,6 +431,7 @@ export async function getTaskBySequence(projectId, userId, sequence) {
           a.evidence_string,
           a.evidence_quality,
           a.skipped,
+          a.is_marked,
           ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
         FROM source_data sd
         LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
@@ -597,6 +601,41 @@ export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, us
 
     revalidatePath('/');
     return { success: true, newPageNumber, newPdfUrl };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 切換資料的「回看標記」狀態 ---
+export async function toggleAnnotationMark(sourceDataId, userId) {
+  try {
+    // 1. 檢查是否已有標註記錄
+    const { rows } = await sql`
+      SELECT id, is_marked FROM annotations 
+      WHERE source_data_id = ${sourceDataId} AND user_id = ${userId};
+    `;
+
+    let newMarkedState = true;
+
+    if (rows.length > 0) {
+      // 2a. 如果已有記錄，則切換狀態
+      newMarkedState = !rows[0].is_marked;
+      await sql`
+        UPDATE annotations 
+        SET is_marked = ${newMarkedState}, updated_at = NOW()
+        WHERE id = ${rows[0].id};
+      `;
+    } else {
+      // 2b. 如果沒有記錄，則建立一筆新的 (狀態設為 pending 或僅標記)
+      // 注意：這裡我們不設定 status='completed'，因為用戶可能只是標記但還沒做完
+      await sql`
+        INSERT INTO annotations (source_data_id, user_id, is_marked, updated_at)
+        VALUES (${sourceDataId}, ${userId}, TRUE, NOW());
+      `;
+    }
+
+    revalidatePath('/');
+    return { success: true, isMarked: newMarkedState };
   } catch (error) {
     return { success: false, error: error.message };
   }

@@ -16,6 +16,7 @@ import {
   resetProjectAnnotations,
   saveAnnotation,
   getActiveAnnouncements,
+  toggleAnnotationMark,
   updateSourceDataPageNumber
 } from './actions';
 import dynamic from 'next/dynamic';
@@ -211,6 +212,7 @@ function AnnotationScreen({ user, project, onBack }) {
     const [skippedCount, setSkippedCount] = useState(0);
     const [allTasks, setAllTasks] = useState([]);
     const [selectedSequence, setSelectedSequence] = useState('');
+    const [isMarked, setIsMarked] = useState(false);
     const [validationResult, setValidationResult] = useState(null);
     const [showPageAdjust, setShowPageAdjust] = useState(false);
     const [newPageNumber, setNewPageNumber] = useState('');
@@ -283,8 +285,9 @@ function AnnotationScreen({ user, project, onBack }) {
         setVerificationTimeline(task.verification_timeline || '');
         setEvidenceStatus(task.evidence_status || '');
         setEvidenceQuality(task.evidence_quality || '');
+        setIsMarked(task.is_marked || false);
 
-        // 恢復高亮標記
+        // 高亮標記
         if (dataTextRef.current) {
             restoreHighlights(task);
         }
@@ -299,6 +302,32 @@ function AnnotationScreen({ user, project, onBack }) {
             } else {
                 alert(`重置失敗: ${result.error}`);
             }
+        }
+    };
+
+    // 處理星號標記切換
+    const handleToggleMark = async () => {
+        if (!currentItem) return;
+        
+        // 樂觀更新 (Optimistic UI Update)：先變色，讓使用者覺得很快
+        const newState = !isMarked;
+        setIsMarked(newState);
+
+        try {
+            const result = await toggleAnnotationMark(currentItem.id, user.id);
+            if (!result.success) {
+                // 如果失敗，變回來並報錯
+                setIsMarked(!newState);
+                alert(`標記失敗: ${result.error}`);
+            } else {
+                // 更新 allTasks 中的狀態，以便下拉選單也能即時更新 (這是為了下一步做準備)
+                setAllTasks(prev => prev.map(t => 
+                    t.id === currentItem.id ? { ...t, is_marked: newState } : t
+                ));
+            }
+        } catch (error) {
+            setIsMarked(!newState);
+            console.error(error);
         }
     };
 
@@ -1259,41 +1288,64 @@ function AnnotationScreen({ user, project, onBack }) {
                                 let status = '';
                                 let color = '';
 
-                                // 使用驗證結果判斷是否不完整
+                                // 判斷是否不完整
                                 let isIncomplete = false;
                                 if (validationResult && task.status === 'completed') {
-                                    // 在驗證結果中找到對應的不完整任務
                                     isIncomplete = validationResult.invalidTasks.some(
                                         invTask => invTask.sequence === task.sequence
                                     );
                                 }
 
+                                // 決定狀態文字與背景色
                                 if (task.skipped === true) {
-                                    status = '🟡 [待補]';
-                                    color = '#fef3c7';
+                                    status = '[待補]';
+                                    color = '#fef3c7'; // 黃底
                                 } else if (isIncomplete) {
-                                    status = '🔴 [不完整]';
-                                    color = '#fecaca';
+                                    status = '[不完整]';
+                                    color = '#fecaca'; // 紅底
                                 } else if (task.status === 'completed') {
-                                    status = '🟢 [完成]';
-                                    color = '#d1fae5';
+                                    status = '[完成]';
+                                    color = '#d1fae5'; // 綠底
                                 } else {
-                                    status = '⚪ [未填]';
-                                    color = '#ffffff';
+                                    status = '[未填]';
+                                    color = '#ffffff'; // 白底
                                 }
+
+                                // --- 星號標記 ---
+                                // 如果有標記，就在最前面加 ⭐，並可選擇性加粗或改變文字
+                                const markPrefix = task.is_marked ? '⭐ ' : '';
+                                // ---------------------------
+
                                 return (
                                     <option
                                         key={task.id}
                                         value={task.sequence}
                                         style={{ backgroundColor: color }}
                                     >
-                                        {status} 第 {task.sequence} 筆 (頁碼: {task.page_number})
+                                        {/* 組合顯示文字： ⭐ [完成] 第 1 筆 ... */}
+                                        {status} 第 {task.sequence} 筆 (頁碼: {task.page_number}){markPrefix}
                                     </option>
                                 );
                             })}
                         </select>
                     </div>
                     <div className="nav-btns">
+                        <button
+                            className="btn"
+                            onClick={handleToggleMark}
+                            disabled={!currentItem}
+                            title={isMarked ? "取消標記" : "標記此題"}
+                            style={{
+                                marginRight: '10px',
+                                background: isMarked ? '#f59e0b' : '#e5e7eb', // 亮橘色 vs 灰色
+                                color: isMarked ? 'white' : '#6b7280',
+                                fontSize: '18px',
+                                padding: '8px 12px',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {isMarked ? '★' : '☆'}
+                        </button>
                         <button
                             className="btn"
                             onClick={loadPreviousTask}
