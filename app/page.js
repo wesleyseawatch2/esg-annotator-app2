@@ -1344,7 +1344,7 @@ function AnnotationScreen({ user, project, onBack }) {
                             style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}
                             title="查看教育訓練投影片"
                         >
-                            📊 教育訓練投影片
+                            📊 教育訓練投影片_20251210 更新（適用 V2 介面）
                         </a>
                     </div>
 
