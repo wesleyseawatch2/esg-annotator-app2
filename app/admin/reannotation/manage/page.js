@@ -10,6 +10,9 @@ export default function ManageReannotationRoundsPage() {
   const [loading, setLoading] = useState(false);
   const [expandedRound, setExpandedRound] = useState(null);
   const [roundTasks, setRoundTasks] = useState({});
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [modalData, setModalData] = useState(null);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
   const router = useRouter();
 
   const theme = {
@@ -105,44 +108,46 @@ export default function ManageReannotationRoundsPage() {
     }
   };
 
-  const handleRemoveUsersFromRound = async (roundId, projectName, roundNumber) => {
+  const handleRemoveUsersFromRound = (roundId, projectName, roundNumber) => {
     const tasks = roundTasks[roundId] || [];
     if (tasks.length === 0) {
       alert('請先展開輪次以載入任務資料');
       return;
     }
 
-    // 取得所有使用者
-    const users = [...new Set(tasks.map(t => ({ id: t.user_id, name: t.username })))];
+    // 取得所有使用者及其任務數
+    const userMap = {};
+    tasks.forEach(task => {
+      if (!userMap[task.user_id]) {
+        userMap[task.user_id] = {
+          id: task.user_id,
+          name: task.username,
+          taskCount: 0
+        };
+      }
+      userMap[task.user_id].taskCount++;
+    });
 
-    // 讓管理員選擇要移除的使用者
-    const userList = users.map((u, i) => `${i + 1}. ${u.name} (${tasks.filter(t => t.user_id === u.id).length} 個任務)`).join('\n');
-    const selected = prompt(
-      `從 ${projectName} Round ${roundNumber} 移除使用者\n\n` +
-      `目前的使用者:\n${userList}\n\n` +
-      `請輸入要移除的使用者編號，多個編號用逗號分隔 (例如: 1,3)\n` +
-      `或輸入 all 移除所有使用者`
-    );
+    const users = Object.values(userMap);
 
-    if (!selected) return;
+    // 設定模態框資料
+    setModalData({
+      roundId,
+      projectName,
+      roundNumber,
+      users
+    });
+    setSelectedUserIds([]);
+    setShowUserModal(true);
+  };
 
-    let targetUserIds = [];
-
-    if (selected.toLowerCase() === 'all') {
-      targetUserIds = users.map(u => u.id);
-    } else {
-      const indices = selected.split(',').map(s => parseInt(s.trim()) - 1);
-      targetUserIds = indices
-        .filter(i => i >= 0 && i < users.length)
-        .map(i => users[i].id);
-    }
-
-    if (targetUserIds.length === 0) {
-      alert('未選擇任何使用者');
+  const handleConfirmRemoveUsers = async () => {
+    if (selectedUserIds.length === 0) {
+      alert('請至少選擇一位使用者');
       return;
     }
 
-    if (!confirm(`確定要移除 ${targetUserIds.length} 位使用者的所有任務嗎？`)) {
+    if (!confirm(`確定要移除 ${selectedUserIds.length} 位使用者的所有任務嗎？`)) {
       return;
     }
 
@@ -152,9 +157,9 @@ export default function ManageReannotationRoundsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          roundId,
+          roundId: modalData.roundId,
           action: 'remove_users',
-          targetUserIds
+          targetUserIds: selectedUserIds
         })
       });
 
@@ -162,8 +167,11 @@ export default function ManageReannotationRoundsPage() {
 
       if (result.success) {
         alert(`✅ 已移除 ${result.deletedTasksCount} 個任務`);
+        setShowUserModal(false);
+        setModalData(null);
+        setSelectedUserIds([]);
         loadRounds(user.id);
-        loadRoundTasks(roundId);
+        loadRoundTasks(modalData.roundId);
       } else {
         alert(`移除失敗: ${result.error}`);
       }
@@ -171,6 +179,26 @@ export default function ManageReannotationRoundsPage() {
       console.error('移除失敗:', error);
       alert('移除失敗');
     }
+  };
+
+  const toggleUserSelection = (userId) => {
+    setSelectedUserIds(prev => {
+      if (prev.includes(userId)) {
+        return prev.filter(id => id !== userId);
+      } else {
+        return [...prev, userId];
+      }
+    });
+  };
+
+  const selectAllUsers = () => {
+    if (modalData) {
+      setSelectedUserIds(modalData.users.map(u => u.id));
+    }
+  };
+
+  const deselectAllUsers = () => {
+    setSelectedUserIds([]);
   };
 
   const handleToggleExpand = (roundId) => {
@@ -485,6 +513,143 @@ export default function ManageReannotationRoundsPage() {
           })
         )}
       </div>
+
+      {/* 使用者選擇模態框 */}
+      {showUserModal && modalData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '30px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.3)'
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: '10px', color: theme.text }}>
+              從 {modalData.projectName} Round {modalData.roundNumber} 移除使用者
+            </h2>
+            <p style={{ color: '#6b7280', marginBottom: '20px' }}>
+              請選擇要移除的使用者，已選擇 {selectedUserIds.length} 位使用者
+            </p>
+
+            {/* 全選/取消全選按鈕 */}
+            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={selectAllUsers}
+                style={{ fontSize: '13px', padding: '6px 12px' }}
+              >
+                ✓ 全選
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={deselectAllUsers}
+                style={{ fontSize: '13px', padding: '6px 12px' }}
+              >
+                ✗ 取消全選
+              </button>
+            </div>
+
+            {/* 使用者列表 */}
+            <div style={{ marginBottom: '25px' }}>
+              {modalData.users.map(user => {
+                const isSelected = selectedUserIds.includes(user.id);
+                return (
+                  <div
+                    key={user.id}
+                    onClick={() => toggleUserSelection(user.id)}
+                    style={{
+                      padding: '15px',
+                      marginBottom: '10px',
+                      border: `2px solid ${isSelected ? '#f59e0b' : theme.border}`,
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: isSelected ? '#fffbeb' : 'white',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '24px',
+                        height: '24px',
+                        border: `2px solid ${isSelected ? '#f59e0b' : '#d1d5db'}`,
+                        borderRadius: '6px',
+                        background: isSelected ? '#f59e0b' : 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}>
+                        {isSelected && '✓'}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: theme.text }}>
+                          {user.name}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '2px' }}>
+                          {user.taskCount} 個任務
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <span style={{
+                        background: '#f59e0b',
+                        color: 'white',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600'
+                      }}>
+                        已選擇
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 操作按鈕 */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowUserModal(false);
+                  setModalData(null);
+                  setSelectedUserIds([]);
+                }}
+              >
+                取消
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={handleConfirmRemoveUsers}
+                disabled={selectedUserIds.length === 0}
+                style={{ opacity: selectedUserIds.length === 0 ? 0.5 : 1 }}
+              >
+                確認移除 ({selectedUserIds.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
