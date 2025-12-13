@@ -44,7 +44,7 @@ export async function GET(request) {
 
     const whereClause = whereConditions.join(' AND ');
 
-    // 查詢使用者的重標註任務
+    // 查詢使用者的重標註任務（只查詢有權限的專案群組）
     const { rows: tasks } = await sql.query(`
       SELECT
         rt.id as task_id,
@@ -76,6 +76,14 @@ export async function GET(request) {
       JOIN projects p ON rr.project_id = p.id
       LEFT JOIN annotations a ON rt.source_data_id = a.source_data_id AND a.user_id = rt.user_id
       WHERE ${whereClause}
+        AND (
+          p.group_id IS NULL
+          OR p.group_id IN (
+            SELECT group_id
+            FROM user_group_permissions
+            WHERE user_id = $1
+          )
+        )
       ORDER BY rr.project_id, rt.task_group, sd.page_number, sd.id
     `, params);
 
