@@ -1432,3 +1432,126 @@ export async function getAvailableRanges(userId, companyId) {
     return { success: false, error: error.message };
   }
 }
+
+// ==================== 標註一致性分析功能 ====================
+
+// --- 計算專案的標註一致性 ---
+export async function calculateAnnotationAgreement(userId, projectId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    const response = await fetch('/api/calculate-agreement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, projectId })
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('計算一致性失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 匯出一致性分析報告（CSV 格式）---
+export async function exportAgreementReport(userId, projectId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 呼叫一致性計算 API
+    const response = await fetch('/api/calculate-agreement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, projectId })
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+      return result;
+    }
+
+    const { data } = result;
+
+    // 準備 Global Summary CSV
+    const globalHeaders = ['Task', 'TaskName', 'Global_Alpha', 'Quality'];
+    const globalRows = data.globalResults.map(r => [
+      r.task,
+      r.taskName,
+      r.alpha.toFixed(4),
+      r.quality
+    ]);
+
+    const globalCSV = [
+      globalHeaders.join(','),
+      ...globalRows.map(row => row.join(','))
+    ].join('\n');
+
+    // 準備 Detailed CSV
+    const detailedHeaders = [
+      'source_data_id',
+      'original_data',
+      'promise_status_score',
+      'verification_timeline_score',
+      'evidence_status_score',
+      'evidence_quality_score',
+      'has_inconsistency',
+      ...data.annotators.flatMap(ann => [
+        `promise_status_${ann}`,
+        `verification_timeline_${ann}`,
+        `evidence_status_${ann}`,
+        `evidence_quality_${ann}`
+      ])
+    ];
+
+    const detailedRows = data.detailedResults.map(item => {
+      const row = [
+        item.source_data_id,
+        `"${(item.original_data || '').replace(/"/g, '""')}"`,
+        item.promise_status_score.toFixed(3),
+        item.verification_timeline_score.toFixed(3),
+        item.evidence_status_score.toFixed(3),
+        item.evidence_quality_score.toFixed(3),
+        item.hasInconsistency ? '是' : '否'
+      ];
+
+      // 新增每位標註者的資料
+      data.annotators.forEach(ann => {
+        const annotatorData = item.annotators.find(a => a.name === ann);
+        if (annotatorData) {
+          row.push(
+            `"${annotatorData.promise_status || ''}"`,
+            `"${annotatorData.verification_timeline || ''}"`,
+            `"${annotatorData.evidence_status || ''}"`,
+            `"${annotatorData.evidence_quality || ''}"`
+          );
+        } else {
+          row.push('', '', '', '');
+        }
+      });
+
+      return row.join(',');
+    });
+
+    const detailedCSV = [
+      detailedHeaders.join(','),
+      ...detailedRows
+    ].join('\n');
+
+    return {
+      success: true,
+      globalCSV,
+      detailedCSV,
+      projectName: data.projectName
+    };
+  } catch (error) {
+    console.error('匯出一致性報告失敗:', error);
+    return { success: false, error: error.message };
+  }
+}

@@ -96,6 +96,7 @@ function LoginRegisterScreen({ onLoginSuccess }) {
 function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [reannotationCount, setReannotationCount] = useState(0);
 
   useEffect(() => {
     async function fetchProjects() {
@@ -109,8 +110,21 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
       if (success) setAnnouncements(announcements);
     }
 
+    async function fetchReannotationQueue() {
+      try {
+        const response = await fetch(`/api/reannotation/queue?userId=${user.id}`);
+        const result = await response.json();
+        if (result.success && result.data.stats) {
+          setReannotationCount(result.data.stats.pendingTasks);
+        }
+      } catch (error) {
+        console.error('載入重標註任務失敗:', error);
+      }
+    }
+
     fetchProjects();
     fetchAnnouncements();
+    fetchReannotationQueue();
   }, [user.id]);
 
   return (
@@ -123,9 +137,9 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>你好, {user.username}!</h2>
-            <div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               {user.role === 'admin' && (
-                <Link href="/admin" className="btn btn-purple" style={{marginRight: '10px'}}>
+                <Link href="/admin" className="btn btn-purple" style={{marginRight: '0'}}>
                   管理後台
                 </Link>
               )}
@@ -170,6 +184,44 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* 重標註任務提示 */}
+        {reannotationCount > 0 && (
+          <div style={{
+            padding: '15px',
+            marginBottom: '20px',
+            background: '#fef3c7',
+            border: '2px solid #f59e0b',
+            borderRadius: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'start' }}>
+              <span style={{ fontSize: '20px', marginRight: '10px' }}>🔄</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
+                  你有 {reannotationCount} 個重標註任務待處理
+                </h3>
+                <p style={{ margin: 0, fontSize: '14px', marginBottom: '10px' }}>
+                  管理員發現部分標註的一致性較低，需要您重新檢視並修改。
+                </p>
+                <Link
+                  href="/reannotation"
+                  style={{
+                    display: 'inline-block',
+                    padding: '8px 16px',
+                    background: '#f59e0b',
+                    color: 'white',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}
+                >
+                  前往處理重標註任務 →
+                </Link>
+              </div>
+            </div>
           </div>
         )}
 

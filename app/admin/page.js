@@ -1485,6 +1485,20 @@ export default function AdminPage() {
                     >
                         📊 查看組別進度
                     </button>
+                    <button
+                        className="btn"
+                        onClick={() => router.push('/admin/agreement')}
+                        style={{ background: '#ec4899', color: 'white', marginRight: '10px' }}
+                    >
+                        🎯 標註一致性分析
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={() => router.push('/admin/reannotation')}
+                        style={{ background: '#f59e0b', color: 'white', marginRight: '10px' }}
+                    >
+                        🔄 重標註管理
+                    </button>
                     <button className="btn" onClick={() => router.push('/')}>返回標註</button>
                 </div>
             </div>

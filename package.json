@@ -8,7 +8,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "migrate:skipped": "node scripts/migrate-add-skipped.js"
+    "migrate:skipped": "node scripts/migrate-add-skipped.js",
+    "migrate:reannotation": "node scripts/migrate-add-reannotation.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/node": "^25.0.1",
     "eslint": "^9",
     "eslint-config-next": "15.5.7"
   }
