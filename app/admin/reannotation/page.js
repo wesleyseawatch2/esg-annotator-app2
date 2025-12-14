@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function AdminReannotationPage() {
   const [user, setUser] = useState(null);
@@ -342,7 +343,7 @@ export default function AdminReannotationPage() {
               <li>為所有相關標註者建立重標註任務</li>
             </ul>
           </li>
-          <li>標註者登入後可在主頁面看到重標註任務提示，或直接前往 <a href="/reannotation" style={{ color: '#f59e0b', fontWeight: '600' }}>/reannotation</a> 查看</li>
+          <li>標註者登入後可在主頁面看到重標註任務提示，或直接前往 <Link href="/reannotation" style={{ color: '#f59e0b', fontWeight: '600' }}>/reannotation</Link> 查看</li>
           <li>標註者完成重標註後，系統會記錄變更並更新版本號</li>
           <li>管理員可重複此流程，直到一致性達到理想水準</li>
         </ol>

@@ -432,7 +432,7 @@ export default function AgreementAnalysisPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <h1 style={{ margin: '0 0 10px 0' }}>📊 標註一致性分析</h1>
-                        <p style={{ margin: 0, opacity: 0.9 }}>Krippendorff's Alpha 計算與爭議案例檢視</p>
+                        <p style={{ margin: 0, opacity: 0.9 }}>Krippendorff&apos;s Alpha 計算與爭議案例檢視</p>
                     </div>
                     <button
                         className="btn btn-secondary"
@@ -538,7 +538,7 @@ export default function AgreementAnalysisPage() {
                     {/* 整體一致性分頁 */}
                     {activeTab === 'summary' && (
                         <div className="panel">
-                            <h2 style={{ marginBottom: '20px' }}>各任務 Krippendorff's Alpha</h2>
+                            <h2 style={{ marginBottom: '20px' }}>各任務 Krippendorff&apos;s Alpha</h2>
                             <div style={{ display: 'grid', gap: '15px' }}>
                                 {agreementData.globalResults.map(result => {
                                     const alphaClass = result.alpha >= 0.8 ? 'alpha-high' :
@@ -787,7 +787,7 @@ export default function AgreementAnalysisPage() {
                 <div className="panel" style={{ textAlign: 'center', padding: '60px', color: theme.textSecondary }}>
                     <div style={{ fontSize: '4rem', marginBottom: '20px' }}>📊</div>
                     <h3 style={{ color: theme.text }}>請選擇專案並開始計算一致性</h3>
-                    <p>系統將自動計算 Krippendorff's Alpha 並找出爭議案例</p>
+                    <p>系統將自動計算 Krippendorff&apos;s Alpha 並找出爭議案例</p>
                 </div>
             )}
         </div>
