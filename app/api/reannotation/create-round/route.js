@@ -2,6 +2,81 @@
 import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
 
+/**
+ * 找出需要重標註的使用者（少數派）
+ *
+ * 邏輯：
+ * - 如果三個人中有一個人和其他兩個人不一樣 → 只回傳那個不一樣的人
+ * - 如果三個人都不一樣 → 回傳全部三個人
+ *
+ * @param {Object} annotators - { username: { user_id, promise_status, ... }, ... }
+ * @param {Array} tasksToCheck - ['promise_status', 'verification_timeline']
+ * @returns {Array} - [user_id1, user_id2, ...]
+ */
+function findMinorityAnnotators(annotators, tasksToCheck) {
+  const annotatorEntries = Object.entries(annotators); // [[username, data], ...]
+
+  if (annotatorEntries.length !== 3) {
+    // 如果不是三個人，回傳全部使用者 ID（保持原邏輯）
+    return annotatorEntries.map(([_, data]) => data.user_id);
+  }
+
+  // 收集每個任務的少數派
+  const minorityUserIds = new Set();
+  let shouldAssignAll = false;
+
+  for (const task of tasksToCheck) {
+    // 建立答案分組：{ "Yes": [user_id1, user_id2], "No": [user_id3], ... }
+    const answerGroups = {};
+
+    annotatorEntries.forEach(([username, data]) => {
+      const answer = data[task];
+      const normalizedAnswer = (answer === null || answer === undefined) ? 'N/A' : String(answer);
+
+      if (!answerGroups[normalizedAnswer]) {
+        answerGroups[normalizedAnswer] = [];
+      }
+      answerGroups[normalizedAnswer].push(data.user_id);
+    });
+
+    const groupSizes = Object.values(answerGroups).map(group => group.length);
+    const uniqueAnswers = Object.keys(answerGroups);
+
+    // 情況 1: 三個人都一樣（不應該發生，因為這筆資料不應該被標記為不一致）
+    if (uniqueAnswers.length === 1) {
+      continue; // 跳過此任務
+    }
+
+    // 情況 2: 三個人都不一樣 (1, 1, 1)
+    if (uniqueAnswers.length === 3) {
+      shouldAssignAll = true;
+      break; // 直接跳出，給全部人
+    }
+
+    // 情況 3: 有一個人不一樣 (2, 1) 或其他組合
+    // 找出最小群組（少數派）
+    const minGroupSize = Math.min(...groupSizes);
+
+    for (const [answer, userIds] of Object.entries(answerGroups)) {
+      if (userIds.length === minGroupSize) {
+        userIds.forEach(uid => minorityUserIds.add(uid));
+      }
+    }
+  }
+
+  // 如果任何一個任務出現三個人都不一樣，就給全部人
+  if (shouldAssignAll) {
+    return annotatorEntries.map(([_, data]) => data.user_id);
+  }
+
+  // 如果沒有找到少數派（理論上不應該），回傳全部人
+  if (minorityUserIds.size === 0) {
+    return annotatorEntries.map(([_, data]) => data.user_id);
+  }
+
+  return Array.from(minorityUserIds);
+}
+
 // 引入一致性計算函數 (與 calculate-agreement 相同)
 function calculateKrippendorffsAlpha(data) {
   const matrix = data;
@@ -335,10 +410,15 @@ export async function POST(request) {
           }
         });
 
-        // 為每位標註者建立任務 (如果 assignAll=true)
-        const userIds = Object.values(item.annotators).map(a => a.user_id);
+        // 找出需要重標註的使用者（少數派或全部）
+        // 只檢查有問題的任務（分數低於門檻的）
+        const problematicTasks = Object.keys(tasksFlagged);
+        const targetUserIds = findMinorityAnnotators(item.annotators, problematicTasks);
 
-        for (const uid of userIds) {
+        // 計算總標註者數量（用於快取）
+        const totalAnnotators = Object.keys(item.annotators).length;
+
+        for (const uid of targetUserIds) {
           await sql`
             INSERT INTO reannotation_tasks
             (round_id, source_data_id, user_id, task_group, tasks_flagged, status)
@@ -365,7 +445,7 @@ export async function POST(request) {
               ${nextRound},
               ${task},
               ${item.localScores[task]},
-              ${userIds.length}
+              ${totalAnnotators}
             )
             ON CONFLICT (project_id, source_data_id, round_number, task_name)
             DO UPDATE SET local_score = EXCLUDED.local_score, calculated_at = NOW()
