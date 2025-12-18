@@ -162,7 +162,7 @@ export async function getProjectTasksOverview(projectId, userId) {
       SELECT
         sd.id,
         sd.page_number,
-        LEFT(sd.original_data, 100) as preview_text,
+        LEFT(sd.original_data, 200) as preview_text,
         a.status,
         a.skipped,
         a.is_marked,

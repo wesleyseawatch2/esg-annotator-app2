@@ -257,6 +257,10 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
 function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    
+    // 設定每頁顯示幾筆
+    const ITEMS_PER_PAGE = 10;
 
     useEffect(() => {
         async function fetchTasks() {
@@ -272,28 +276,156 @@ function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
         fetchTasks();
     }, [project.id, user.id]);
 
+    // 計算分頁資料
+    const totalPages = Math.ceil(tasks.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const currentTasks = tasks.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+    // 產生下拉選單的選項 (e.g., 1-20, 21-40...)
+    const pageOptions = [];
+    for (let i = 0; i < totalPages; i++) {
+        const start = i * ITEMS_PER_PAGE + 1;
+        const end = Math.min((i + 1) * ITEMS_PER_PAGE, tasks.length);
+        pageOptions.push({
+            value: i + 1,
+            label: `${start} - ${end}`
+        });
+    }
+
+    // 頁面內部捲動
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+        }
+    };
+
     if (loading) return <div className="container"><div className="panel">載入中...</div></div>;
 
     return (
-        <div className="container">
-            <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h1 style={{ fontSize: '20px', margin: 0 }}>{project.name} - 所有資料總覽</h1>
-                <button 
-                    onClick={onBack} 
-                    className="btn" 
-                    style={{ background: '#10b981', color: 'white', fontWeight: 'bold' }}
-                >
-                    回到標註頁面
-                </button>
+        // 最外層：固定高度 100vh，使用 Flex 佈局，禁止外層捲動
+        // 使用 position: fixed 強制覆蓋整個視窗，解決外層捲動條問題
+        <div className="container" style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: '#f3f4f6', // 補上背景色，避免透明
+            display: 'flex', 
+            flexDirection: 'column', 
+            overflow: 'hidden',
+            padding: '20px',      // 改用 padding 來做邊距
+            boxSizing: 'border-box',
+            zIndex: 1000          // 確保蓋在最上層
+        }}>
+            {/* 2. Header */}
+            <div className="header" style={{ 
+                flexDirection: 'column', 
+                alignItems: 'stretch', 
+                gap: '15px',
+                flexShrink: 0,
+                marginBottom: '10px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h1 style={{ fontSize: '20px', margin: 0 }}>{project.name} - 資料總覽</h1>
+                    <button 
+                        onClick={onBack} 
+                        className="btn" 
+                        style={{ background: '#6b7280', color: 'white' }}
+                    >
+                        回到標註頁面
+                    </button>
+                </div>
+
+                {/* 分頁控制區 */}
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    gap: '15px', 
+                    background: '#f3f4f6', 
+                    padding: '10px', 
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                }}>
+                    {/* 上一頁按鈕 */}
+                    <button 
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="btn"
+                        style={{ 
+                            background: currentPage === 1 ? '#e5e7eb' : 'white', 
+                            color: currentPage === 1 ? '#9ca3af' : '#374151',
+                            border: '1px solid #d1d5db',
+                            padding: '5px 15px'
+                        }}
+                    >
+                        ◀
+                    </button>
+
+                    {/* 下拉選單 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px', color: '#4b5563' }}>範圍：第</span>
+                        <select 
+                            value={currentPage} 
+                            onChange={(e) => handlePageChange(Number(e.target.value))}
+                            style={{ 
+                                padding: '6px 12px', 
+                                borderRadius: '4px', 
+                                border: '1px solid #d1d5db',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                color: '#374151',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {pageOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                            筆 (共 {tasks.length} 筆)
+                        </span>
+                    </div>
+
+                    {/* 下一頁按鈕 */}
+                    <button 
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="btn"
+                        style={{ 
+                            background: currentPage === totalPages ? '#e5e7eb' : 'white', 
+                            color: currentPage === totalPages ? '#9ca3af' : '#374151',
+                            border: '1px solid #d1d5db',
+                            padding: '5px 15px'
+                        }}
+                    >
+                        ▶
+                    </button>
+                </div>
             </div>
 
-            <div className="panel" style={{ background: '#f9fafb', minHeight: '600px' }}>
+            {/* 3. Panel */}
+            <div className="panel" style={{ 
+                background: '#f9fafb', 
+                flex: 1,              
+                overflowY: 'auto', 
+                minHeight: 0,
+                marginTop: '0px',     // 貼近上方 Header
+                padding: '20px',      // 讓卡片上方有更多呼吸空間
+                boxSizing: 'border-box',
+                borderRadius: '8px'   // 頂部加一點圓角
+            }}>
                 <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', 
-                    gap: '15px' 
+                    display: 'grid',
+                    // 大約可以顯示 5 欄
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', 
+                    gap: '15px',
+                    paddingBottom: '10px' // 底部留一點呼吸空間
                 }}>
-                    {tasks.map(task => (
+                    {currentTasks.map(task => (
                         <div 
                             key={task.id} 
                             onClick={() => onJumpToTask(task.sequence)}
@@ -304,32 +436,62 @@ function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
                                 padding: '15px',
                                 cursor: 'pointer',
                                 display: 'flex',
-                                alignItems: 'center',
-                                gap: '15px',
+                                flexDirection: 'column', // 改為垂直排列
+                                gap: '10px',
+                                height: '250px', // 固定高度，讓卡片變高
                                 transition: 'transform 0.1s, box-shadow 0.1s',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                overflow: 'hidden'
                             }}
                             onMouseEnter={e => {
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+                                e.currentTarget.style.transform = 'translateY(-4px)';
+                                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+                                e.currentTarget.style.borderColor = '#6366f1';
                             }}
                             onMouseLeave={e => {
                                 e.currentTarget.style.transform = 'translateY(0)';
                                 e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                                e.currentTarget.style.borderColor = '#e5e7eb';
                             }}
                         >
-                            <div style={{ fontSize: '24px', color: task.is_marked ? '#f59e0b' : '#d1d5db' }}>
-                                {task.is_marked ? '★' : '☆'}
-                            </div>
-                            <div style={{ flex: 1, overflow: 'hidden' }}>
-                                <div style={{ fontWeight: 'bold', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* 卡片頂部：題號與狀態 */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#1f2937' }}>
                                     第 {task.sequence} 筆
-                                    {task.skipped && <span style={{ fontSize: '12px', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px' }}>待補</span>}
-                                    {task.status === 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#d1fae5', color: '#065f46', padding: '2px 6px', borderRadius: '4px' }}>完成</span>}
                                 </div>
-                                <div style={{ color: '#6b7280', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {task.preview_text}...
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                    <span style={{ fontSize: '20px', color: task.is_marked ? '#ec4899' : '#e5e7eb' }}>
+                                        {task.is_marked ? '★' : '☆'}
+                                    </span>
                                 </div>
+                            </div>
+                            
+                            {/* 狀態標籤區 */}
+                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {task.skipped && <span style={{ fontSize: '12px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '12px' }}>待補</span>}
+                                {task.status === 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '12px' }}>完成</span>}
+                                {task.status !== 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#f3f4f6', color: '#6b7280', padding: '2px 8px', borderRadius: '12px' }}>未填</span>}
+                            </div>
+
+                            {/* 內容區：允許多行文字 */}
+                            <div style={{ 
+                                flex: 1, 
+                                color: '#4b5563', 
+                                fontSize: '14px', 
+                                lineHeight: '1.6',
+                                overflow: 'hidden',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 5, // 限制顯示約 5 行，然後自動「...」
+                                WebkitBoxOrient: 'vertical',
+                                whiteSpace: 'normal', // 允許換行
+                                textOverflow: 'ellipsis'
+                            }}>
+                                {task.preview_text}
+                            </div>
+                            
+                            {/* 底部提示 */}
+                            <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'right', marginTop: 'auto' }}>
+                                頁碼: {task.page_number}
                             </div>
                         </div>
                     ))}
