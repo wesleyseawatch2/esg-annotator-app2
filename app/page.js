@@ -1386,11 +1386,12 @@ return (
                     gap: '15px',
                     marginTop: '15px',
                     paddingTop: '15px',
-                    borderTop: '1px solid #e5e7eb' // 增加一條分隔線讓區塊更明顯
+                    borderTop: '1px solid #e5e7eb'
                 }}>
                     
-                    {/* 左側：個人進度 & 跳轉選單 */}
+                    {/* [左側區塊] */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                        {/* 1. 個人進度 */}
                         <div style={{ fontSize: '14px', color: '#4b5563', fontWeight: '500' }}>
                             您的個人進度: {progress.completed} / {progress.total}
                             {skippedCount > 0 && (
@@ -1400,6 +1401,7 @@ return (
                             )}
                         </div>
 
+                        {/* 2. 跳轉選單 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ whiteSpace: 'nowrap', fontSize: '14px', color: '#374151' }}>跳到第幾筆:</span>
                             <select 
@@ -1409,8 +1411,9 @@ return (
                                     padding: '6px 10px', 
                                     border: '1px solid #d1d5db', 
                                     borderRadius: '4px', 
-                                    minWidth: '180px', 
-                                    fontSize: '14px' 
+                                    minWidth: '150px', 
+                                    fontSize: '14px',
+                                    color: '#374151'
                                 }}
                             >
                                 <option value="">請選擇...</option>
@@ -1428,22 +1431,42 @@ return (
                                     const markPrefix = task.is_marked ? '⭐ ' : '';
                                     
                                     return <option key={task.id} value={task.sequence} style={{ backgroundColor: color }}>
-                                        {markPrefix}{status} 第 {task.sequence} 筆 (頁碼: {task.page_number})
+                                        {markPrefix}{status} 第 {task.sequence} 筆
                                     </option>;
                                 })}
                             </select>
                         </div>
                     </div>
 
-                    {/* 右側：按鈕群組 & 參考資源 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                    {/* [右側區塊] */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         
-                        {/* 1. 操作按鈕區 */}
+                        {/* 3. 參考資源 */}
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '12px',
+                            borderRight: '1px solid #d1d5db', // 分隔線
+                            paddingRight: '20px'
+                        }}>
+                            <span style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📚 參考資源：
+                            </span>
+                            <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
+                                📖 AI CUP 標註手冊 V2
+                            </a>
+                            <span style={{ color: '#cbd5e1' }}>|</span>
+                            <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
+                                📊 系統教學投影片（20251210版）
+                            </a>
+                        </div>
+
+                        {/* 4. 五個操作按鈕 */}
                         <div className="nav-btns" style={{ display: 'flex', gap: '8px' }}>
                             <button
                                 className="btn"
                                 onClick={onShowOverview}
-                                title="查看所有資料總覽"
+                                title="查看所有資料"
                                 style={{ background: '#6366f1', color: 'white', padding: '8px 12px', fontSize: '14px', fontWeight: 'bold' }}
                             >
                                 所有資料
@@ -1491,28 +1514,6 @@ return (
                             >
                                 儲存 & 下一筆
                             </button>
-                        </div>
-
-                        {/* 2. 參考資源 (加上左側分隔線) */}
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '12px', 
-                            borderLeft: '1px solid #d1d5db', 
-                            paddingLeft: '15px',
-                            marginLeft: '5px',
-                            height: '30px' // 固定高度以確保垂直置中漂亮
-                        }}>
-                            <span style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📚 參考資源:
-                            </span>
-                            <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📖 標註手冊 V2
-                            </a>
-                            <span style={{ color: '#cbd5e1' }}>|</span>
-                            <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📊 教學影片
-                            </a>
                         </div>
                     </div>
                 </div>
