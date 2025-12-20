@@ -85,7 +85,7 @@ function parseInlineStyles(text) {
 }
 
 // --- 公告彈窗元件 ---
-function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRead }) {
+function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRead, loading }) {
     // 監聽 ESC 鍵關閉
     useEffect(() => {
         const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
@@ -137,7 +137,14 @@ function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRe
 
                 {/* 公告列表區 (可捲動) */}
                 <div style={{ padding: '20px', overflowY: 'auto' }}>
-                    {announcements.length === 0 ? (
+                {/* Loading 判斷 */}
+                    {loading ? (
+                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                            {/* 簡單的轉圈圈動畫 css 在下面 */}
+                            <div className="spinner"></div>
+                            <span>資料載入中...</span>
+                        </div>
+                    ) : announcements.length === 0 ? (
                         <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>目前沒有公告</div>
                     ) : (
                         announcements.map((ann, index) => {
@@ -157,9 +164,12 @@ function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRe
                             }
 
                             return (
-                                <details key={ann.id || index} style={{ 
-                                    marginBottom: '15px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' 
-                                }}>
+                                <details 
+                                    key={ann.id || index} 
+                                    style={{ 
+                                        marginBottom: '15px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' 
+                                    }}
+                                >
                                     <summary 
                                         onClick={() => {
                                             // 點擊展開時，如果未讀，則標記為已讀
@@ -232,6 +242,18 @@ function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRe
             <style jsx>{`
                 details[open] .arrow-icon {
                     transform: rotate(90deg);
+                }
+                .spinner {
+                    border: 3px solid #f3f3f3;
+                    border-top: 3px solid #3b82f6;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
                 }
             `}</style>
         </div>
@@ -312,6 +334,7 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [reannotationCount, setReannotationCount] = useState(0);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false); // 控制彈窗
   const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);            // 記錄已讀公告的 ID
+  const [isAnnouncementsLoading, setIsAnnouncementsLoading] = useState(true);    // 公告載入狀態，預設為 true
 
   useEffect(() => {
     async function fetchProjects() {
@@ -320,10 +343,11 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
       else setProjects(projects);
     }
 
-    // 改用新的 getLocalAnnouncements
     async function fetchAnnouncements() {
+      setIsAnnouncementsLoading(true); // 開始載入
       const { success, announcements } = await getLocalAnnouncements();
       if (success) setAnnouncements(announcements);
+      setIsAnnouncementsLoading(false); // 載入完成
     }
 
     async function fetchReannotationQueue() {
@@ -378,6 +402,7 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
           announcements={announcements}
           readIds={readAnnouncementIds}
           onMarkAsRead={handleMarkAsRead}
+          loading={isAnnouncementsLoading}
       />
 
       <div className="panel" style={{ maxWidth: '600px', margin: '50px auto' }}>
@@ -411,7 +436,7 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                     border: '1px dashed #93c5fd',
                     padding: '15px',
                     display: 'flex',
-                    justifyContent: 'space-between', // 改為 space-between，讓內容分居左右
+                    justifyContent: 'space-between',
                     alignItems: 'center',
                     gap: '10px',
                     fontSize: '16px',
@@ -425,32 +450,41 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                 {/* 右側資訊區：包含紅點與日期 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     
-                    {/* 未讀紅點 (顯示在日期左邊) */}
-                    {unreadCount > 0 && (
-                        <span style={{
-                            background: '#ef4444', // 紅色
-                            color: 'white',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            padding: '2px 8px',
-                            borderRadius: '9999px',
-                            boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)',
-                            animation: 'pulse 2s infinite',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '20px',
-                            minWidth: '20px'
-                        }}>
-                            {unreadCount}
+                    {/* Loading 判斷 */}
+                    {isAnnouncementsLoading ? (
+                        <span style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                           <span className="spinner-small"></span> 載入中...
                         </span>
-                    )}
-                    
-                    {/* 顯示最新日期 (永遠顯示) */}
-                    {announcements.length > 0 && (
-                         <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#60a5fa' }}>
-                             最新公告：{announcements[0]?.date} 上傳
-                         </span>
+                    ) : (
+                        <>
+                            {/* 未讀紅點 (顯示在日期左邊) */}
+                            {unreadCount > 0 && (
+                                <span style={{
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    padding: '2px 8px',
+                                    borderRadius: '9999px',
+                                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)',
+                                    animation: 'pulse 2s infinite',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    height: '20px',
+                                    minWidth: '20px'
+                                }}>
+                                    {unreadCount}
+                                </span>
+                            )}
+                            
+                            {/* 最新日期 (永遠顯示) */}
+                            {announcements.length > 0 && (
+                                 <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#60a5fa' }}>
+                                     最新公告：{announcements[0]?.date} 上傳
+                                 </span>
+                            )}
+                        </>
                     )}
                 </div>
             </button>
