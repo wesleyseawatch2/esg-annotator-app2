@@ -449,7 +449,7 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                     {/* 顯示最新日期 (永遠顯示) */}
                     {announcements.length > 0 && (
                          <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#60a5fa' }}>
-                             最新: {announcements[0]?.date}
+                             最新公告：{announcements[0]?.date} 上傳
                          </span>
                     )}
                 </div>
