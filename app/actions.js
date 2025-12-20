@@ -599,27 +599,6 @@ export async function getAllUsersProgress() {
   }
 }
 
-// --- 取得啟用的公告（所有用戶可見）---
-export async function getActiveAnnouncements() {
-  try {
-    const { rows: announcements } = await sql`
-      SELECT
-        id,
-        title,
-        content,
-        type,
-        created_at
-      FROM announcements
-      WHERE is_active = TRUE
-      ORDER BY created_at DESC;
-    `;
-
-    return { success: true, announcements };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
 // --- 更新資料的 PDF 頁碼（僅限 admin）---
 export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, userId) {
   try {
