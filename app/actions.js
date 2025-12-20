@@ -2,6 +2,8 @@
 'use server';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
+import fs from 'fs/promises';
+import path from 'path';
 
 export async function registerUser(username, password) {
   try {
@@ -660,5 +662,60 @@ export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, us
     return { success: true, newPageNumber, newPdfUrl };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+}
+
+// --- 從本地資料夾讀取 Markdown 公告 ---
+export async function getLocalAnnouncements() {
+  try {
+    const announcementsDir = path.join(process.cwd(), 'announcements');
+    
+    // 檢查資料夾是否存在
+    try {
+        await fs.access(announcementsDir);
+    } catch {
+        return { success: true, announcements: [] };
+    }
+
+    const files = await fs.readdir(announcementsDir);
+    const announcements = [];
+
+    for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+        
+        const filePath = path.join(announcementsDir, file);
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        
+        // 簡單解析 Frontmatter (--- ... ---)
+        const parts = fileContent.split('---');
+        if (parts.length < 3) continue; // 格式不正確略過
+        
+        const metaLines = parts[1].trim().split('\n');
+        const metadata = {};
+        metaLines.forEach(line => {
+            const [key, ...value] = line.split(':');
+            if (key && value) {
+                metadata[key.trim()] = value.join(':').trim();
+            }
+        });
+        
+        const content = parts.slice(2).join('---').trim();
+        
+        announcements.push({
+            id: file,
+            title: metadata.title || file.replace('.md', ''),
+            date: metadata.date || '',
+            type: metadata.type || 'info',
+            content: content
+        });
+    }
+
+    // 依照日期降序排列 (新的在上面)
+    announcements.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return { success: true, announcements };
+  } catch (error) {
+    console.error("讀取公告失敗:", error);
+    return { success: false, error: "無法載入公告" };
   }
 }

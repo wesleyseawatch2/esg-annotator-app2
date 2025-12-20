@@ -15,7 +15,7 @@ import {
   validateCompletedAnnotations,
   resetProjectAnnotations,
   saveAnnotation,
-  getActiveAnnouncements,
+  getLocalAnnouncements,
   updateSourceDataPageNumber,
   toggleAnnotationMark,
   getProjectTasksOverview
@@ -26,6 +26,217 @@ const PDFViewer = dynamic(() => import('../components/PDFViewer'), {
   ssr: false,
   loading: () => <div className="pdf-status">正在載入 PDF 瀏覽器...</div>
 });
+
+// --- 簡單的 Markdown 渲染器 (支援標題、列表、粗體、連結) ---
+function SimpleMarkdown({ content }) {
+    if (!content) return null;
+    
+    // 將文本按行分割
+    const lines = content.split('\n');
+    
+    return (
+        <div style={{ lineHeight: '1.6', fontSize: '15px', color: '#374151' }}>
+            {lines.map((line, idx) => {
+                // 處理標題 (# Title)
+                if (line.trim().startsWith('#')) {
+                    const level = line.match(/^#+/)[0].length;
+                    const text = line.replace(/^#+\s*/, '');
+                    const fontSize = level === 1 ? '1.5em' : level === 2 ? '1.25em' : '1.1em';
+                    return <div key={idx} style={{ fontWeight: 'bold', fontSize, marginTop: '12px', marginBottom: '6px', color: '#111827' }}>{text}</div>;
+                }
+                // 處理列表 (- Item)
+                if (line.trim().startsWith('- ')) {
+                    const text = line.trim().substring(2);
+                    return (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'start', marginLeft: '10px', marginBottom: '4px' }}>
+                            <span style={{ marginRight: '8px', color: '#6b7280' }}>•</span>
+                            <span>{parseInlineStyles(text)}</span>
+                        </div>
+                    );
+                }
+                // 處理有序列表 (1. Item)
+                if (/^\d+\.\s/.test(line.trim())) {
+                     return (
+                        <div key={idx} style={{ marginLeft: '10px', marginBottom: '4px' }}>
+                            {parseInlineStyles(line.trim())}
+                        </div>
+                    );
+                }
+                // 空行
+                if (!line.trim()) return <div key={idx} style={{ height: '8px' }}></div>;
+                
+                // 一般段落
+                return <div key={idx} style={{ marginBottom: '4px' }}>{parseInlineStyles(line)}</div>;
+            })}
+        </div>
+    );
+}
+
+// 輔助函式：處理行內樣式 (**粗體**)
+function parseInlineStyles(text) {
+    // 簡單替換 **text** 為 <strong>text</strong>
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={i}>{part.slice(2, -2)}</strong>;
+        }
+        return part;
+    });
+}
+
+// --- 公告彈窗元件 ---
+function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRead }) {
+    // 監聽 ESC 鍵關閉
+    useEffect(() => {
+        const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        if (isOpen) window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isOpen, onClose]);
+
+    if (!isOpen) return null;
+
+    // [安全防護] 確保 readIds 是一個陣列，避免 undefined 錯誤
+    const safeReadIds = Array.isArray(readIds) ? readIds : [];
+
+    return (
+        <div 
+            style={{ 
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+                backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                display: 'flex', justifyContent: 'center', alignItems: 'center',
+                padding: '20px', backdropFilter: 'blur(2px)'
+            }}
+            onClick={onClose} // 點擊背景關閉
+        >
+            <div 
+                style={{ 
+                    backgroundColor: 'white', width: '100%', maxWidth: '700px', 
+                    maxHeight: '85vh', borderRadius: '12px', 
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                }}
+                onClick={e => e.stopPropagation()} // 點擊內容不關閉
+            >
+                {/* 彈窗標題列 */}
+                <div style={{ 
+                    padding: '20px', borderBottom: '1px solid #e5e7eb', 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: '#f9fafb'
+                }}>
+                    <h2 style={{ margin: 0, fontSize: '20px', color: '#1f2937' }}>📢 系統公告</h2>
+                    <button 
+                        onClick={onClose}
+                        style={{ 
+                            background: 'transparent', border: 'none', fontSize: '24px', 
+                            color: '#6b7280', cursor: 'pointer', padding: '0 8px' 
+                        }}
+                    >
+                        ×
+                    </button>
+                </div>
+
+                {/* 公告列表區 (可捲動) */}
+                <div style={{ padding: '20px', overflowY: 'auto' }}>
+                    {announcements.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>目前沒有公告</div>
+                    ) : (
+                        announcements.map((ann, index) => {
+                            // 判斷是否已讀
+                            const isRead = safeReadIds.includes(ann.id);
+
+                            // 定義樣式：預設為 Info (藍) - 消息
+                            let badgeStyle = { bg: '#eff6ff', color: '#1d4ed8', border: '#93c5fd', text: '消息' };
+                            
+                            // 邏輯調整：
+                            // 1. warning -> 紅色 -> "警告"
+                            // 2. notice -> 橘色 -> "注意"
+                            if (ann.type === 'warning') {
+                                badgeStyle = { bg: '#fef2f2', color: '#b91c1c', border: '#fca5a5', text: '警告' };
+                            } else if (ann.type === 'notice') {
+                                badgeStyle = { bg: '#fff7ed', color: '#c2410c', border: '#fdba74', text: '注意' };
+                            }
+
+                            return (
+                                <details key={ann.id || index} style={{ 
+                                    marginBottom: '15px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' 
+                                }}>
+                                    <summary 
+                                        onClick={() => {
+                                            // 點擊展開時，如果未讀，則標記為已讀
+                                            if (!isRead && typeof onMarkAsRead === 'function') {
+                                                onMarkAsRead(ann.id);
+                                            }
+                                        }}
+                                        style={{ 
+                                            padding: '15px', cursor: 'pointer', background: '#fff',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            listStyle: 'none', fontWeight: 'bold'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ 
+                                                fontSize: '12px', padding: '2px 8px', borderRadius: '4px',
+                                                background: badgeStyle.bg,
+                                                color: badgeStyle.color,
+                                                border: `1px solid ${badgeStyle.border}`
+                                            }}>
+                                                {badgeStyle.text}
+                                            </span>
+                                            <span style={{ fontSize: '16px', color: '#1f2937' }}>{ann.title}</span>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            {/* 未讀紅點：只在未讀時顯示，已讀自動消失 */}
+                                            {!isRead && (
+                                                <span 
+                                                    title="未讀公告"
+                                                    style={{
+                                                        width: '8px', 
+                                                        height: '8px', 
+                                                        backgroundColor: '#ef4444', 
+                                                        borderRadius: '50%',
+                                                        display: 'inline-block'
+                                                    }}
+                                                ></span>
+                                            )}
+                                            <span style={{ fontSize: '13px', color: '#9ca3af', fontWeight: 'normal' }}>{ann.date}</span>
+                                            
+                                            {/* 箭頭符號預設為 ▶，加上 CSS class 處理旋轉 */}
+                                            <span 
+                                                className="arrow-icon"
+                                                style={{ 
+                                                    fontSize: '12px', 
+                                                    color: '#9ca3af', 
+                                                    display: 'inline-block',
+                                                    transition: 'transform 0.2s ease' // 平滑轉動動畫
+                                                }}
+                                            >
+                                                ▶
+                                            </span>
+                                        </div>
+                                    </summary>
+                                    <div style={{ 
+                                        padding: '20px', borderTop: '1px solid #f3f4f6', 
+                                        background: '#fafafa'
+                                    }}>
+                                        <SimpleMarkdown content={ann.content} />
+                                    </div>
+                                </details>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+
+            {/* CSS 控制箭頭旋轉 */}
+            <style jsx>{`
+                details[open] .arrow-icon {
+                    transform: rotate(90deg);
+                }
+            `}</style>
+        </div>
+    );
+}
 
 function LoginRegisterScreen({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -99,6 +310,8 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [reannotationCount, setReannotationCount] = useState(0);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false); // 控制彈窗
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);            // 記錄已讀公告的 ID
 
   useEffect(() => {
     async function fetchProjects() {
@@ -107,8 +320,9 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
       else setProjects(projects);
     }
 
+    // 改用新的 getLocalAnnouncements
     async function fetchAnnouncements() {
-      const { success, announcements } = await getActiveAnnouncements();
+      const { success, announcements } = await getLocalAnnouncements();
       if (success) setAnnouncements(announcements);
     }
 
@@ -124,19 +338,55 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
       }
     }
 
+    // 從 localStorage 讀取已讀紀錄
+    const loadReadStatus = () => {
+        try {
+            const saved = localStorage.getItem(`read_announcements_${user.id}`);
+            if (saved) {
+                setReadAnnouncementIds(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error('讀取已讀狀態失敗', e);
+        }
+    };
+
     fetchProjects();
     fetchAnnouncements();
     fetchReannotationQueue();
+    loadReadStatus();
   }, [user.id]);
+
+  // 計算公告未讀數
+  const unreadCount = announcements.filter(ann => !readAnnouncementIds.includes(ann.id)).length;
+
+  // 標記單則已讀的處理函式
+  const handleMarkAsRead = (id) => {
+      if (!readAnnouncementIds.includes(id)) {
+          const newReadIds = [...readAnnouncementIds, id];
+          setReadAnnouncementIds(newReadIds);
+          // 更新 localStorage
+          localStorage.setItem(`read_announcements_${user.id}`, JSON.stringify(newReadIds));
+      }
+  };
 
   return (
     <div className="container">
+      {/* 載入公告彈窗 */}
+      <AnnouncementModal 
+          isOpen={isAnnouncementModalOpen} 
+          onClose={() => setIsAnnouncementModalOpen(false)} 
+          announcements={announcements}
+          readIds={readAnnouncementIds}
+          onMarkAsRead={handleMarkAsRead}
+      />
+
       <div className="panel" style={{ maxWidth: '600px', margin: '50px auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <img src="/ntpu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto', marginBottom: '20px' }} />
           <h1 style={{ fontSize: '24px', marginBottom: '10px', color: '#1f2937' }}>AI CUP：ESG 報告承諾驗證標註資料收集</h1>
           <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '20px' }}>AI CUP: ESG Report Promise Validation Annotation Data Collection</p>
         </div>
+        
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>你好, {user.username}!</h2>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -149,45 +399,62 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
             </div>
         </div>
 
-        {/* 公告區域 */}
-        {announcements.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            {announcements.map(announcement => {
-              const typeStyles = {
-                info: { bg: '#dbeafe', border: '#3b82f6', icon: 'ℹ️' },
-                warning: { bg: '#fed7aa', border: '#f59e0b', icon: '⚠️' },
-                success: { bg: '#d1fae5', border: '#10b981', icon: '✅' },
-                error: { bg: '#fecaca', border: '#ef4444', icon: '❌' }
-              };
-              const style = typeStyles[announcement.type] || typeStyles.info;
-
-              return (
-                <div
-                  key={announcement.id}
-                  style={{
+        {/* --- 公告按鈕區域 --- */}
+        <div style={{ marginBottom: '25px', position: 'relative' }}>
+            <button 
+                onClick={() => setIsAnnouncementModalOpen(true)}
+                className="btn"
+                style={{ 
+                    width: '100%', 
+                    background: '#eff6ff', 
+                    color: '#1d4ed8', 
+                    border: '1px dashed #93c5fd',
                     padding: '15px',
-                    marginBottom: '15px',
-                    background: style.bg,
-                    border: `2px solid ${style.border}`,
-                    borderRadius: '8px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'start' }}>
-                    <span style={{ fontSize: '20px', marginRight: '10px' }}>{style.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0, marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
-                        {announcement.title}
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '14px', whiteSpace: 'pre-wrap' }}>
-                        {announcement.content}
-                      </p>
-                    </div>
-                  </div>
+                    display: 'flex',
+                    justifyContent: 'space-between', // 改為 space-between，讓內容分居左右
+                    alignItems: 'center',
+                    gap: '10px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    position: 'relative'
+                }}
+            >
+                {/* 左側文字 */}
+                <span>📢 查看系統公告</span>
+                
+                {/* 右側資訊區：包含紅點與日期 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    
+                    {/* 未讀紅點 (顯示在日期左邊) */}
+                    {unreadCount > 0 && (
+                        <span style={{
+                            background: '#ef4444', // 紅色
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            padding: '2px 8px',
+                            borderRadius: '9999px',
+                            boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)',
+                            animation: 'pulse 2s infinite',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '20px',
+                            minWidth: '20px'
+                        }}>
+                            {unreadCount}
+                        </span>
+                    )}
+                    
+                    {/* 顯示最新日期 (永遠顯示) */}
+                    {announcements.length > 0 && (
+                         <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#60a5fa' }}>
+                             最新: {announcements[0]?.date}
+                         </span>
+                    )}
                 </div>
-              );
-            })}
-          </div>
-        )}
+            </button>
+        </div>
 
         {/* 重標註任務提示 */}
         {reannotationCount > 0 && (
@@ -250,6 +517,15 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
           {projects.length === 0 && <p>目前沒有可標註的專案。</p>}
         </ul>
       </div>
+    
+      {/* 增加一點 CSS 動畫讓紅點更生動 */}
+      <style jsx>{`
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
