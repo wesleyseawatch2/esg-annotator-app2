@@ -6,40 +6,63 @@
 
 ## 🛠 技術棧 (Tech Stack)
 
-- **Framework**: [Next.js 15 (App Router)](https://nextjs.org/)
-- **UI Library**: React 19
-- **Database**: Vercel Postgres (SQL)
-- **Storage**: Vercel Blob (PDF 檔案儲存)
+- **Framework**：[Next.js 15 (App Router)](https://nextjs.org/)
+- **UI Library**：React 19
+- **Database**：Vercel Postgres (SQL)
+- **Storage**：Vercel Blob (PDF 檔案儲存)
 - **PDF Engine**:
-  - Viewer: `pdfjs-dist`
-  - Manipulation: `pdf-lib` (用於自動分頁處理)
-- **Deployment**: Vercel
+  - Viewer：`pdfjs-dist`
+  - Manipulation：`pdf-lib` (用於自動分頁處理)
+- **Deployment**：Vercel
 
 ---
 
 ## ✨ 主要功能
 
 ### 🧑‍💻 標註者端 (User)
-- **PDF 瀏覽器**: 支援縮放、換頁、Canvas 渲染。
+- **PDF 瀏覽器**：支援縮放、換頁、Canvas 渲染。
 - **標註工具**:
   - 承諾 (Promise) 與 證據 (Evidence) 標記。
   - 支援畫框 (Bounding Box) 定位。
   - ESG 類別分類 (E/S/G)。
-- **進度追蹤**: 查看個人標註進度與跳過功能。
+- **進度追蹤**：查看個人標註進度與跳過功能。
+- **📢 公告系統 (New)**:
+  - **Markdown 管理**：系統自動讀取本地 `.md` 檔案發布公告。
+  - **未讀追蹤**：支援紅點氣泡提示與 LocalStorage 未讀狀態記錄。
+  - **分級顯示**：支援 Info (藍)、Notice (橘)、Warning (紅) 三種等級。
 
 ### 👮‍♂️ 管理員後台 (Admin)
 - **專案管理**:
   - 支援單一專案上傳。
-  - **批次上傳**: 支援多層資料夾結構，自動將 PDF 分割為單頁並建立對應專案。
+  - **批次上傳**：支援多層資料夾結構，自動將 PDF 分割為單頁並建立對應專案。
   - PDF 頁碼對齊工具。
 - **資料分配管理**:
   - 公司資料掃描與建立。
   - 靈活分配資料範圍給不同專案 (Range Assignment)。
-- **群組與權限**: 建立專案群組、分配使用者權限。
-- **公告系統**: 發布系統公告（支援類型與狀態切換）。
-- **資料匯出**: 匯出標註結果為 CSV。
-- **一致性分析**: 計算 Krippendorff's Alpha，找出爭議案例。
-- **🔄 重標註管理**: 針對一致性低的資料建立重標註任務。
+- **群組與權限**：建立專案群組、分配使用者權限。
+- **資料匯出**：匯出標註結果為 CSV。
+- **一致性分析**：計算 Krippendorff's Alpha，找出爭議案例。
+- **重標註管理**：針對一致性低的資料建立重標註任務。
+
+---
+
+## 🔄 重標註功能亮點（New）
+
+### 核心特色
+- ✅ **方案 A 設計**：顯示統計資訊 + 標註指引（不顯示他人逐筆答案）
+- ✅ **任務分組**：分為 Group 1 (承諾+時間) 和 Group 2 (證據) 避免混亂
+- ✅ **版本控制**：記錄每次修改，避免標記過期問題
+- ✅ **審計日誌**：完整追蹤所有變更歷程
+- ✅ **堅持答案機制**：允許標註者堅持自己的判斷
+
+### 快速開始
+```bash
+# 1. 執行資料庫遷移
+npm run migrate:reannotation
+
+# 2. 管理員前往 /admin/reannotation 建立輪次
+# 3. 標註者前往 /reannotation 處理任務
+```
 
 ---
 
@@ -75,7 +98,17 @@ npm run migrate:reannotation
 # 其他 SQL 初始化請參考 docs/ 資料夾下的 sql 檔案
 ```
 
-### 4. 啟動開發伺服器
+### 4. 管理公告
+```bash
+---
+title：公告標題
+date：2024-01-01
+type：info
+---
+公告內容支援 **Markdown** 語法。
+```
+
+### 5. 啟動開發伺服器
 ```bash
 npm run dev
 ```
@@ -89,6 +122,7 @@ npm run dev
 esg-annotator-app
 ├─ 📁.next
 ├─ 📁.claude
+├─ 📁announcements
 ├─ 📁app
 │  ├─ 📁admin
 │  │  └─ 📄page.js
@@ -133,26 +167,4 @@ esg-annotator-app
 詳細功能操作請參閱 docs/ 資料夾：
 * [批次上傳指南](docs/batch-upload-guide.md)
 * [公司資料管理指南](docs/company-data-management-guide.md)
-* [🔄 重標註功能使用指南](docs/reannotation-guide.md) ⭐ **NEW**
-
----
-
-## 🔄 重標註功能亮點
-
-### 核心特色
-- ✅ **方案 A 設計**：顯示統計資訊 + 標註指引（不顯示他人逐筆答案）
-- ✅ **任務分組**：分為 Group 1 (承諾+時間) 和 Group 2 (證據) 避免混亂
-- ✅ **版本控制**：記錄每次修改，避免標記過期問題
-- ✅ **審計日誌**：完整追蹤所有變更歷程
-- ✅ **堅持答案機制**：允許標註者堅持自己的判斷
-
-### 快速開始
-```bash
-# 1. 執行資料庫遷移
-npm run migrate:reannotation
-
-# 2. 管理員前往 /admin/reannotation 建立輪次
-# 3. 標註者前往 /reannotation 處理任務
-```
-
-詳細說明請參考 [重標註功能使用指南](docs/reannotation-guide.md)。
+* [🔄 重標註功能使用指南](docs/reannotation-guide.md)
