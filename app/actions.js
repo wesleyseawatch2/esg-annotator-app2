@@ -2,6 +2,8 @@
 'use server';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
+import fs from 'fs/promises';
+import path from 'path';
 
 export async function registerUser(username, password) {
   try {
@@ -121,6 +123,63 @@ export async function getNextTaskForUser(projectId, userId) {
   }
 }
 
+// --- 切換資料的「回看標記」狀態 ---
+export async function toggleAnnotationMark(sourceDataId, userId) {
+  try {
+    // 1. 檢查是否已有標註記錄
+    const { rows } = await sql`
+      SELECT id, is_marked FROM annotations 
+      WHERE source_data_id = ${sourceDataId} AND user_id = ${userId};
+    `;
+
+    let newMarkedState = true;
+
+    if (rows.length > 0) {
+      // 2a. 如果已有記錄，則切換狀態
+      newMarkedState = !rows[0].is_marked;
+      await sql`
+        UPDATE annotations 
+        SET is_marked = ${newMarkedState}, updated_at = NOW()
+        WHERE id = ${rows[0].id};
+      `;
+    } else {
+      // 2b. 如果沒有記錄，則建立一筆新的
+      await sql`
+        INSERT INTO annotations (source_data_id, user_id, is_marked, updated_at)
+        VALUES (${sourceDataId}, ${userId}, TRUE, NOW());
+      `;
+    }
+
+    revalidatePath('/');
+    return { success: true, isMarked: newMarkedState };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 取得專案所有資料詳情（用於總覽頁面） ---
+export async function getProjectTasksOverview(projectId, userId) {
+  try {
+    const { rows } = await sql`
+      SELECT
+        sd.id,
+        sd.page_number,
+        LEFT(sd.original_data, 200) as preview_text,
+        a.status,
+        a.skipped,
+        a.is_marked,
+        ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
+      FROM source_data sd
+      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+      WHERE sd.project_id = ${projectId}
+      ORDER BY sd.page_number ASC, sd.id ASC;
+    `;
+    return { success: true, tasks: rows };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export async function getPreviousTaskForUser(projectId, userId, currentId) {
   try {
     // 如果 currentId 是 null（已完成所有標註），返回最後一筆已標註的資料
@@ -134,7 +193,8 @@ export async function getPreviousTaskForUser(projectId, userId, currentId) {
             a.verification_timeline,
             a.evidence_status,
             a.evidence_string,
-            a.evidence_quality
+            a.evidence_quality,
+            a.is_marked
           FROM source_data sd
           JOIN annotations a ON sd.id = a.source_data_id
           WHERE sd.project_id = ${projectId}
@@ -151,7 +211,8 @@ export async function getPreviousTaskForUser(projectId, userId, currentId) {
             a.verification_timeline,
             a.evidence_status,
             a.evidence_string,
-            a.evidence_quality
+            a.evidence_quality,
+            a.is_marked
           FROM source_data sd
           JOIN annotations a ON sd.id = a.source_data_id
           WHERE sd.project_id = ${projectId}
@@ -274,6 +335,7 @@ export async function getAllTasksWithStatus(projectId, userId) {
         sd.page_number,
         sd.original_data,
         a.skipped,
+        a.is_marked,
         a.status,
         a.promise_status,
         a.promise_string,
@@ -428,6 +490,7 @@ export async function getTaskBySequence(projectId, userId, sequence) {
           a.evidence_string,
           a.evidence_quality,
           a.skipped,
+          a.is_marked,
           ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
         FROM source_data sd
         LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
@@ -536,27 +599,6 @@ export async function getAllUsersProgress() {
   }
 }
 
-// --- 取得啟用的公告（所有用戶可見）---
-export async function getActiveAnnouncements() {
-  try {
-    const { rows: announcements } = await sql`
-      SELECT
-        id,
-        title,
-        content,
-        type,
-        created_at
-      FROM announcements
-      WHERE is_active = TRUE
-      ORDER BY created_at DESC;
-    `;
-
-    return { success: true, announcements };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
 // --- 更新資料的 PDF 頁碼（僅限 admin）---
 export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, userId) {
   try {
@@ -599,5 +641,60 @@ export async function updateSourceDataPageNumber(sourceDataId, newPageNumber, us
     return { success: true, newPageNumber, newPdfUrl };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+}
+
+// --- 從本地資料夾讀取 Markdown 公告 ---
+export async function getLocalAnnouncements() {
+  try {
+    const announcementsDir = path.join(process.cwd(), 'announcements');
+    
+    // 檢查資料夾是否存在
+    try {
+        await fs.access(announcementsDir);
+    } catch {
+        return { success: true, announcements: [] };
+    }
+
+    const files = await fs.readdir(announcementsDir);
+    const announcements = [];
+
+    for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+        
+        const filePath = path.join(announcementsDir, file);
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        
+        // 簡單解析 Frontmatter (--- ... ---)
+        const parts = fileContent.split('---');
+        if (parts.length < 3) continue; // 格式不正確略過
+        
+        const metaLines = parts[1].trim().split('\n');
+        const metadata = {};
+        metaLines.forEach(line => {
+            const [key, ...value] = line.split(':');
+            if (key && value) {
+                metadata[key.trim()] = value.join(':').trim();
+            }
+        });
+        
+        const content = parts.slice(2).join('---').trim();
+        
+        announcements.push({
+            id: file,
+            title: metadata.title || file.replace('.md', ''),
+            date: metadata.date || '',
+            type: metadata.type || 'info',
+            content: content
+        });
+    }
+
+    // 依照日期降序排列 (新的在上面)
+    announcements.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return { success: true, announcements };
+  } catch (error) {
+    console.error("讀取公告失敗:", error);
+    return { success: false, error: "無法載入公告" };
   }
 }

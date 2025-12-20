@@ -15,8 +15,10 @@ import {
   validateCompletedAnnotations,
   resetProjectAnnotations,
   saveAnnotation,
-  getActiveAnnouncements,
-  updateSourceDataPageNumber
+  getLocalAnnouncements,
+  updateSourceDataPageNumber,
+  toggleAnnotationMark,
+  getProjectTasksOverview
 } from './actions';
 import dynamic from 'next/dynamic';
 
@@ -24,6 +26,239 @@ const PDFViewer = dynamic(() => import('../components/PDFViewer'), {
   ssr: false,
   loading: () => <div className="pdf-status">正在載入 PDF 瀏覽器...</div>
 });
+
+// --- 簡單的 Markdown 渲染器 (支援標題、列表、粗體、連結) ---
+function SimpleMarkdown({ content }) {
+    if (!content) return null;
+    
+    // 將文本按行分割
+    const lines = content.split('\n');
+    
+    return (
+        <div style={{ lineHeight: '1.6', fontSize: '15px', color: '#374151' }}>
+            {lines.map((line, idx) => {
+                // 處理標題 (# Title)
+                if (line.trim().startsWith('#')) {
+                    const level = line.match(/^#+/)[0].length;
+                    const text = line.replace(/^#+\s*/, '');
+                    const fontSize = level === 1 ? '1.5em' : level === 2 ? '1.25em' : '1.1em';
+                    return <div key={idx} style={{ fontWeight: 'bold', fontSize, marginTop: '12px', marginBottom: '6px', color: '#111827' }}>{text}</div>;
+                }
+                // 處理列表 (- Item)
+                if (line.trim().startsWith('- ')) {
+                    const text = line.trim().substring(2);
+                    return (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'start', marginLeft: '10px', marginBottom: '4px' }}>
+                            <span style={{ marginRight: '8px', color: '#6b7280' }}>•</span>
+                            <span>{parseInlineStyles(text)}</span>
+                        </div>
+                    );
+                }
+                // 處理有序列表 (1. Item)
+                if (/^\d+\.\s/.test(line.trim())) {
+                     return (
+                        <div key={idx} style={{ marginLeft: '10px', marginBottom: '4px' }}>
+                            {parseInlineStyles(line.trim())}
+                        </div>
+                    );
+                }
+                // 空行
+                if (!line.trim()) return <div key={idx} style={{ height: '8px' }}></div>;
+                
+                // 一般段落
+                return <div key={idx} style={{ marginBottom: '4px' }}>{parseInlineStyles(line)}</div>;
+            })}
+        </div>
+    );
+}
+
+// 輔助函式：處理行內樣式 (**粗體**)
+function parseInlineStyles(text) {
+    // 簡單替換 **text** 為 <strong>text</strong>
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={i}>{part.slice(2, -2)}</strong>;
+        }
+        return part;
+    });
+}
+
+// --- 公告彈窗元件 ---
+function AnnouncementModal({ isOpen, onClose, announcements, readIds, onMarkAsRead, loading }) {
+    // 監聽 ESC 鍵關閉
+    useEffect(() => {
+        const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        if (isOpen) window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isOpen, onClose]);
+
+    if (!isOpen) return null;
+
+    // [安全防護] 確保 readIds 是一個陣列，避免 undefined 錯誤
+    const safeReadIds = Array.isArray(readIds) ? readIds : [];
+
+    return (
+        <div 
+            style={{ 
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+                backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                display: 'flex', justifyContent: 'center', alignItems: 'center',
+                padding: '20px', backdropFilter: 'blur(2px)'
+            }}
+            onClick={onClose} // 點擊背景關閉
+        >
+            <div 
+                style={{ 
+                    backgroundColor: 'white', width: '100%', maxWidth: '700px', 
+                    maxHeight: '85vh', borderRadius: '12px', 
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                }}
+                onClick={e => e.stopPropagation()} // 點擊內容不關閉
+            >
+                {/* 彈窗標題列 */}
+                <div style={{ 
+                    padding: '20px', borderBottom: '1px solid #e5e7eb', 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: '#f9fafb'
+                }}>
+                    <h2 style={{ margin: 0, fontSize: '20px', color: '#1f2937' }}>📢 系統公告</h2>
+                    <button 
+                        onClick={onClose}
+                        style={{ 
+                            background: 'transparent', border: 'none', fontSize: '24px', 
+                            color: '#6b7280', cursor: 'pointer', padding: '0 8px' 
+                        }}
+                    >
+                        ×
+                    </button>
+                </div>
+
+                {/* 公告列表區 (可捲動) */}
+                <div style={{ padding: '20px', overflowY: 'auto' }}>
+                {/* Loading 判斷 */}
+                    {loading ? (
+                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                            {/* 簡單的轉圈圈動畫 css 在下面 */}
+                            <div className="spinner"></div>
+                            <span>資料載入中...</span>
+                        </div>
+                    ) : announcements.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>目前沒有公告</div>
+                    ) : (
+                        announcements.map((ann, index) => {
+                            // 判斷是否已讀
+                            const isRead = safeReadIds.includes(ann.id);
+
+                            // 定義樣式：預設為 Info (藍) - 消息
+                            let badgeStyle = { bg: '#eff6ff', color: '#1d4ed8', border: '#93c5fd', text: '消息' };
+                            
+                            // 邏輯調整：
+                            // 1. warning -> 紅色 -> "警告"
+                            // 2. notice -> 橘色 -> "注意"
+                            if (ann.type === 'warning') {
+                                badgeStyle = { bg: '#fef2f2', color: '#b91c1c', border: '#fca5a5', text: '警告' };
+                            } else if (ann.type === 'notice') {
+                                badgeStyle = { bg: '#fff7ed', color: '#c2410c', border: '#fdba74', text: '注意' };
+                            }
+
+                            return (
+                                <details 
+                                    key={ann.id || index} 
+                                    style={{ 
+                                        marginBottom: '15px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' 
+                                    }}
+                                >
+                                    <summary 
+                                        onClick={() => {
+                                            // 點擊展開時，如果未讀，則標記為已讀
+                                            if (!isRead && typeof onMarkAsRead === 'function') {
+                                                onMarkAsRead(ann.id);
+                                            }
+                                        }}
+                                        style={{ 
+                                            padding: '15px', cursor: 'pointer', background: '#fff',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            listStyle: 'none', fontWeight: 'bold'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ 
+                                                fontSize: '12px', padding: '2px 8px', borderRadius: '4px',
+                                                background: badgeStyle.bg,
+                                                color: badgeStyle.color,
+                                                border: `1px solid ${badgeStyle.border}`
+                                            }}>
+                                                {badgeStyle.text}
+                                            </span>
+                                            <span style={{ fontSize: '16px', color: '#1f2937' }}>{ann.title}</span>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            {/* 未讀紅點：只在未讀時顯示，已讀自動消失 */}
+                                            {!isRead && (
+                                                <span 
+                                                    title="未讀公告"
+                                                    style={{
+                                                        width: '8px', 
+                                                        height: '8px', 
+                                                        backgroundColor: '#ef4444', 
+                                                        borderRadius: '50%',
+                                                        display: 'inline-block'
+                                                    }}
+                                                ></span>
+                                            )}
+                                            <span style={{ fontSize: '13px', color: '#9ca3af', fontWeight: 'normal' }}>{ann.date}</span>
+                                            
+                                            {/* 箭頭符號預設為 ▶，加上 CSS class 處理旋轉 */}
+                                            <span 
+                                                className="arrow-icon"
+                                                style={{ 
+                                                    fontSize: '12px', 
+                                                    color: '#9ca3af', 
+                                                    display: 'inline-block',
+                                                    transition: 'transform 0.2s ease' // 平滑轉動動畫
+                                                }}
+                                            >
+                                                ▶
+                                            </span>
+                                        </div>
+                                    </summary>
+                                    <div style={{ 
+                                        padding: '20px', borderTop: '1px solid #f3f4f6', 
+                                        background: '#fafafa'
+                                    }}>
+                                        <SimpleMarkdown content={ann.content} />
+                                    </div>
+                                </details>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+
+            {/* CSS 控制箭頭旋轉 */}
+            <style jsx>{`
+                details[open] .arrow-icon {
+                    transform: rotate(90deg);
+                }
+                .spinner {
+                    border: 3px solid #f3f3f3;
+                    border-top: 3px solid #3b82f6;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
+        </div>
+    );
+}
 
 function LoginRegisterScreen({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -97,6 +332,9 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [reannotationCount, setReannotationCount] = useState(0);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false); // 控制彈窗
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);            // 記錄已讀公告的 ID
+  const [isAnnouncementsLoading, setIsAnnouncementsLoading] = useState(true);    // 公告載入狀態，預設為 true
 
   useEffect(() => {
     async function fetchProjects() {
@@ -106,8 +344,10 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
     }
 
     async function fetchAnnouncements() {
-      const { success, announcements } = await getActiveAnnouncements();
+      setIsAnnouncementsLoading(true); // 開始載入
+      const { success, announcements } = await getLocalAnnouncements();
       if (success) setAnnouncements(announcements);
+      setIsAnnouncementsLoading(false); // 載入完成
     }
 
     async function fetchReannotationQueue() {
@@ -122,19 +362,56 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
       }
     }
 
+    // 從 localStorage 讀取已讀紀錄
+    const loadReadStatus = () => {
+        try {
+            const saved = localStorage.getItem(`read_announcements_${user.id}`);
+            if (saved) {
+                setReadAnnouncementIds(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error('讀取已讀狀態失敗', e);
+        }
+    };
+
     fetchProjects();
     fetchAnnouncements();
     fetchReannotationQueue();
+    loadReadStatus();
   }, [user.id]);
+
+  // 計算公告未讀數
+  const unreadCount = announcements.filter(ann => !readAnnouncementIds.includes(ann.id)).length;
+
+  // 標記單則已讀的處理函式
+  const handleMarkAsRead = (id) => {
+      if (!readAnnouncementIds.includes(id)) {
+          const newReadIds = [...readAnnouncementIds, id];
+          setReadAnnouncementIds(newReadIds);
+          // 更新 localStorage
+          localStorage.setItem(`read_announcements_${user.id}`, JSON.stringify(newReadIds));
+      }
+  };
 
   return (
     <div className="container">
+      {/* 載入公告彈窗 */}
+      <AnnouncementModal 
+          isOpen={isAnnouncementModalOpen} 
+          onClose={() => setIsAnnouncementModalOpen(false)} 
+          announcements={announcements}
+          readIds={readAnnouncementIds}
+          onMarkAsRead={handleMarkAsRead}
+          loading={isAnnouncementsLoading}
+      />
+
       <div className="panel" style={{ maxWidth: '600px', margin: '50px auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <img src="/ntpu-logo.png" alt="國立臺北大學" style={{ maxWidth: '300px', height: 'auto', marginBottom: '20px' }} />
           <h1 style={{ fontSize: '24px', marginBottom: '10px', color: '#1f2937' }}>AI CUP：ESG 報告承諾驗證標註資料收集</h1>
           <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '20px' }}>AI CUP: ESG Report Promise Validation Annotation Data Collection</p>
         </div>
+        
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>你好, {user.username}!</h2>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -147,45 +424,71 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
             </div>
         </div>
 
-        {/* 公告區域 */}
-        {announcements.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            {announcements.map(announcement => {
-              const typeStyles = {
-                info: { bg: '#dbeafe', border: '#3b82f6', icon: 'ℹ️' },
-                warning: { bg: '#fed7aa', border: '#f59e0b', icon: '⚠️' },
-                success: { bg: '#d1fae5', border: '#10b981', icon: '✅' },
-                error: { bg: '#fecaca', border: '#ef4444', icon: '❌' }
-              };
-              const style = typeStyles[announcement.type] || typeStyles.info;
-
-              return (
-                <div
-                  key={announcement.id}
-                  style={{
+        {/* --- 公告按鈕區域 --- */}
+        <div style={{ marginBottom: '25px', position: 'relative' }}>
+            <button 
+                onClick={() => setIsAnnouncementModalOpen(true)}
+                className="btn"
+                style={{ 
+                    width: '100%', 
+                    background: '#eff6ff', 
+                    color: '#1d4ed8', 
+                    border: '1px dashed #93c5fd',
                     padding: '15px',
-                    marginBottom: '15px',
-                    background: style.bg,
-                    border: `2px solid ${style.border}`,
-                    borderRadius: '8px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'start' }}>
-                    <span style={{ fontSize: '20px', marginRight: '10px' }}>{style.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0, marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
-                        {announcement.title}
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '14px', whiteSpace: 'pre-wrap' }}>
-                        {announcement.content}
-                      </p>
-                    </div>
-                  </div>
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '10px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    position: 'relative'
+                }}
+            >
+                {/* 左側文字 */}
+                <span>📢 查看系統公告</span>
+                
+                {/* 右側資訊區：包含紅點與日期 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    
+                    {/* Loading 判斷 */}
+                    {isAnnouncementsLoading ? (
+                        <span style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                           <span className="spinner-small"></span> 載入中...
+                        </span>
+                    ) : (
+                        <>
+                            {/* 未讀紅點 (顯示在日期左邊) */}
+                            {unreadCount > 0 && (
+                                <span style={{
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    padding: '2px 8px',
+                                    borderRadius: '9999px',
+                                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)',
+                                    animation: 'pulse 2s infinite',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    height: '20px',
+                                    minWidth: '20px'
+                                }}>
+                                    {unreadCount}
+                                </span>
+                            )}
+                            
+                            {/* 最新日期 (永遠顯示) */}
+                            {announcements.length > 0 && (
+                                 <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#60a5fa' }}>
+                                     最新公告：{announcements[0]?.date} 上傳
+                                 </span>
+                            )}
+                        </>
+                    )}
                 </div>
-              );
-            })}
-          </div>
-        )}
+            </button>
+        </div>
 
         {/* 重標註任務提示 */}
         {reannotationCount > 0 && (
@@ -248,11 +551,267 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
           {projects.length === 0 && <p>目前沒有可標註的專案。</p>}
         </ul>
       </div>
+    
+      {/* 增加一點 CSS 動畫讓紅點更生動 */}
+      <style jsx>{`
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
 
-function AnnotationScreen({ user, project, onBack }) {
+function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
+    const [tasks, setTasks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    
+    // 設定每頁顯示幾筆
+    const ITEMS_PER_PAGE = 10;
+
+    useEffect(() => {
+        async function fetchTasks() {
+            setLoading(true);
+            const res = await getProjectTasksOverview(project.id, user.id);
+            if (res.success) {
+                setTasks(res.tasks);
+            } else {
+                alert('載入失敗: ' + res.error);
+            }
+            setLoading(false);
+        }
+        fetchTasks();
+    }, [project.id, user.id]);
+
+    // 計算分頁資料
+    const totalPages = Math.ceil(tasks.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const currentTasks = tasks.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+    // 產生下拉選單的選項 (e.g., 1-20, 21-40...)
+    const pageOptions = [];
+    for (let i = 0; i < totalPages; i++) {
+        const start = i * ITEMS_PER_PAGE + 1;
+        const end = Math.min((i + 1) * ITEMS_PER_PAGE, tasks.length);
+        pageOptions.push({
+            value: i + 1,
+            label: `${start} - ${end}`
+        });
+    }
+
+    // 頁面內部捲動
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+        }
+    };
+
+    if (loading) return <div className="container"><div className="panel">載入中...</div></div>;
+
+    return (
+        // 最外層：固定高度 100vh，使用 Flex 佈局，禁止外層捲動
+        // 使用 position: fixed 強制覆蓋整個視窗，解決外層捲動條問題
+        <div className="container" style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: '#f3f4f6', // 補上背景色，避免透明
+            display: 'flex', 
+            flexDirection: 'column', 
+            overflow: 'hidden',
+            padding: '20px',      // 改用 padding 來做邊距
+            boxSizing: 'border-box',
+            zIndex: 1000          // 確保蓋在最上層
+        }}>
+            {/* 2. Header */}
+            <div className="header" style={{ 
+                flexDirection: 'column', 
+                alignItems: 'stretch', 
+                gap: '15px',
+                flexShrink: 0,
+                marginBottom: '10px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h1 style={{ fontSize: '20px', margin: 0 }}>{project.name} - 資料總覽</h1>
+                    <button 
+                        onClick={onBack} 
+                        className="btn" 
+                        style={{ background: '#6b7280', color: 'white' }}
+                    >
+                        回到標註頁面
+                    </button>
+                </div>
+
+                {/* 分頁控制區 */}
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    gap: '15px', 
+                    background: '#f3f4f6', 
+                    padding: '10px', 
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                }}>
+                    {/* 上一頁按鈕 */}
+                    <button 
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="btn"
+                        style={{ 
+                            background: currentPage === 1 ? '#e5e7eb' : 'white', 
+                            color: currentPage === 1 ? '#9ca3af' : '#374151',
+                            border: '1px solid #d1d5db',
+                            padding: '5px 15px'
+                        }}
+                    >
+                        ◀
+                    </button>
+
+                    {/* 下拉選單 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px', color: '#4b5563' }}>範圍：第</span>
+                        <select 
+                            value={currentPage} 
+                            onChange={(e) => handlePageChange(Number(e.target.value))}
+                            style={{ 
+                                padding: '6px 12px', 
+                                borderRadius: '4px', 
+                                border: '1px solid #d1d5db',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                color: '#374151',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {pageOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                            筆 (共 {tasks.length} 筆)
+                        </span>
+                    </div>
+
+                    {/* 下一頁按鈕 */}
+                    <button 
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="btn"
+                        style={{ 
+                            background: currentPage === totalPages ? '#e5e7eb' : 'white', 
+                            color: currentPage === totalPages ? '#9ca3af' : '#374151',
+                            border: '1px solid #d1d5db',
+                            padding: '5px 15px'
+                        }}
+                    >
+                        ▶
+                    </button>
+                </div>
+            </div>
+
+            {/* 3. Panel */}
+            <div className="panel" style={{ 
+                background: '#f9fafb', 
+                flex: 1,              
+                overflowY: 'auto', 
+                minHeight: 0,
+                marginTop: '0px',     // 貼近上方 Header
+                padding: '20px',      // 讓卡片上方有更多呼吸空間
+                boxSizing: 'border-box',
+                borderRadius: '8px'   // 頂部加一點圓角
+            }}>
+                <div style={{ 
+                    display: 'grid',
+                    // 大約可以顯示 5 欄
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', 
+                    gap: '15px',
+                    paddingBottom: '10px' // 底部留一點呼吸空間
+                }}>
+                    {currentTasks.map(task => (
+                        <div 
+                            key={task.id} 
+                            onClick={() => onJumpToTask(task.sequence)}
+                            style={{
+                                background: 'white',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '8px',
+                                padding: '15px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column', // 改為垂直排列
+                                gap: '10px',
+                                height: '250px', // 固定高度，讓卡片變高
+                                transition: 'transform 0.1s, box-shadow 0.1s',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                overflow: 'hidden'
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.transform = 'translateY(-4px)';
+                                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+                                e.currentTarget.style.borderColor = '#6366f1';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                                e.currentTarget.style.borderColor = '#e5e7eb';
+                            }}
+                        >
+                            {/* 卡片頂部：題號與狀態 */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#1f2937' }}>
+                                    第 {task.sequence} 筆
+                                </div>
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                    <span style={{ fontSize: '20px', color: task.is_marked ? '#ec4899' : '#e5e7eb' }}>
+                                        {task.is_marked ? '★' : '☆'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {/* 狀態標籤區 */}
+                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {task.skipped && <span style={{ fontSize: '12px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '12px' }}>待補</span>}
+                                {task.status === 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '12px' }}>完成</span>}
+                                {task.status !== 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#f3f4f6', color: '#6b7280', padding: '2px 8px', borderRadius: '12px' }}>未填</span>}
+                            </div>
+
+                            {/* 內容區：允許多行文字 */}
+                            <div style={{ 
+                                flex: 1, 
+                                color: '#4b5563', 
+                                fontSize: '14px', 
+                                lineHeight: '1.6',
+                                overflow: 'hidden',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 5, // 限制顯示約 5 行，然後自動「...」
+                                WebkitBoxOrient: 'vertical',
+                                whiteSpace: 'normal', // 允許換行
+                                textOverflow: 'ellipsis'
+                            }}>
+                                {task.preview_text}
+                            </div>
+                            
+                            {/* 底部提示 */}
+                            <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'right', marginTop: 'auto' }}>
+                                頁碼: {task.page_number}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequence, onJumpConsumed }) {
     const [currentItem, setCurrentItem] = useState(undefined);
     const [progress, setProgress] = useState({ completed: 0, total: 0 });
     const [esgTypes, setEsgTypes] = useState([]);
@@ -263,6 +822,7 @@ function AnnotationScreen({ user, project, onBack }) {
     const [skippedCount, setSkippedCount] = useState(0);
     const [allTasks, setAllTasks] = useState([]);
     const [selectedSequence, setSelectedSequence] = useState('');
+    const [isMarked, setIsMarked] = useState(false);
     const [validationResult, setValidationResult] = useState(null);
     const [showPageAdjust, setShowPageAdjust] = useState(false);
     const [newPageNumber, setNewPageNumber] = useState('');
@@ -273,6 +833,21 @@ function AnnotationScreen({ user, project, onBack }) {
     const dataTextRef = useRef(null);
 
     useEffect(() => { loadTask(); }, []);
+
+    // 處理從總覽頁面跳轉回來的請求
+    useEffect(() => {
+        if (initialSequence) {
+            const jump = async () => {
+                const res = await getTaskBySequence(project.id, user.id, initialSequence);
+                if (res.task) {
+                    setCurrentItem(res.task);
+                    loadTaskData(res.task);
+                }
+                if (onJumpConsumed) onJumpConsumed();
+            };
+            jump();
+        }
+    }, [initialSequence]);
 
     useEffect(() => {
         if (currentItem && dataTextRef.current) {
@@ -335,10 +910,33 @@ function AnnotationScreen({ user, project, onBack }) {
         setVerificationTimeline(task.verification_timeline || '');
         setEvidenceStatus(task.evidence_status || '');
         setEvidenceQuality(task.evidence_quality || '');
+        setIsMarked(task.is_marked || false);
 
         // 恢復高亮標記
         if (dataTextRef.current) {
             restoreHighlights(task);
+        }
+    };
+
+    const handleToggleMark = async () => {
+        if (!currentItem) return;
+        
+        const newState = !isMarked;
+        setIsMarked(newState);
+
+        try {
+            const result = await toggleAnnotationMark(currentItem.id, user.id);
+            if (!result.success) {
+                setIsMarked(!newState);
+                alert(`標記失敗: ${result.error}`);
+            } else {
+                setAllTasks(prev => prev.map(t => 
+                    t.id === currentItem.id ? { ...t, is_marked: newState } : t
+                ));
+            }
+        } catch (error) {
+            setIsMarked(!newState);
+            console.error(error);
         }
     };
 
@@ -1227,178 +1825,170 @@ function AnnotationScreen({ user, project, onBack }) {
     useEffect(() => { if (promiseStatus === 'No') { setVerificationTimeline('N/A'); setEvidenceStatus('N/A'); } }, [promiseStatus]);
     useEffect(() => { if (evidenceStatus !== 'Yes') setEvidenceQuality('N/A'); }, [evidenceStatus]);
 
-    return (
+return (
         <div className="container">
             <div className="header">
                 <h1>{project.name} - 標註工具</h1>
                 <div className="controls">
                     <button onClick={onBack} className="btn">返回專案列表</button>
                     {user.role === 'admin' && (
-                        <button
-                            onClick={handleBatchAutoAlign}
-                            disabled={!!batchAlignProgress && !batchAlignProgress.completed}
-                            className="btn"
-                            style={{
-                                background: '#8b5cf6',
-                                color: 'white',
-                                marginLeft: '10px'
-                            }}
-                        >
+                        <button onClick={handleBatchAutoAlign} disabled={!!batchAlignProgress && !batchAlignProgress.completed} className="btn" style={{ background: '#8b5cf6', color: 'white', marginLeft: '10px' }}>
                             🤖 批次自動對齊
                         </button>
                     )}
                     {user.role === 'admin' && (
-                        <button
-                            onClick={handleAutoFixUrlMismatch}
-                            className="btn"
-                            style={{
-                                background: '#10b981',
-                                color: 'white',
-                                marginLeft: '10px'
-                            }}
-                        >
+                        <button onClick={handleAutoFixUrlMismatch} className="btn" style={{ background: '#10b981', color: 'white', marginLeft: '10px' }}>
                             🔗 修復 URL 不匹配
                         </button>
                     )}
-                    <button
-                        onClick={handleValidateData}
-                        className="btn"
-                        style={{
-                            background: '#3b82f6',
-                            color: 'white',
-                            marginLeft: '10px'
-                        }}
-                    >
+                    <button onClick={handleValidateData} className="btn" style={{ background: '#3b82f6', color: 'white', marginLeft: '10px' }}>
                         ✓ 驗證資料完整性
                     </button>
-                    <button
-                        onClick={handleResetProject}
-                        className="btn"
-                        style={{
-                            background: '#dc2626',
-                            color: 'white',
-                            marginLeft: '10px'
-                        }}
-                    >
+                    <button onClick={handleResetProject} className="btn" style={{ background: '#dc2626', color: 'white', marginLeft: '10px' }}>
                         🔄 重置專案
                     </button>
                     <span style={{ marginLeft: 'auto', fontWeight: 'bold' }}>標註者: {user.username}</span>
                 </div>
-                <div className="progress">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span>您的個人進度: {progress.completed} / {progress.total}</span>
-                        {skippedCount > 0 && (
-                            <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '14px' }}>
-                                ⚠️ {skippedCount} 個待補項目
+                {/* --- 按鈕與參考資料 --- */}
+                <div className="progress" style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    flexWrap: 'wrap', 
+                    gap: '15px',
+                    marginTop: '15px',
+                    paddingTop: '15px',
+                    borderTop: '1px solid #e5e7eb'
+                }}>
+                    
+                    {/* [左側區塊] */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                        {/* 1. 個人進度 */}
+                        <div style={{ fontSize: '14px', color: '#4b5563', fontWeight: '500' }}>
+                            您的個人進度: {progress.completed} / {progress.total}
+                            {skippedCount > 0 && (
+                                <span style={{ color: '#f59e0b', fontWeight: 'bold', marginLeft: '8px' }}>
+                                    ⚠️ {skippedCount} 待補
+                                </span>
+                            )}
+                        </div>
+
+                        {/* 2. 跳轉選單 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ whiteSpace: 'nowrap', fontSize: '14px', color: '#374151' }}>跳到第幾筆:</span>
+                            <select 
+                                value={selectedSequence} 
+                                onChange={handleSequenceJump} 
+                                style={{ 
+                                    padding: '6px 10px', 
+                                    border: '1px solid #d1d5db', 
+                                    borderRadius: '4px', 
+                                    minWidth: '150px', 
+                                    fontSize: '14px',
+                                    color: '#374151'
+                                }}
+                            >
+                                <option value="">請選擇...</option>
+                                {allTasks.map((task) => {
+                                    let status = '', color = '';
+                                    let isIncomplete = false;
+                                    if (validationResult && task.status === 'completed') {
+                                        isIncomplete = validationResult.invalidTasks.some(invTask => invTask.sequence === task.sequence);
+                                    }
+                                    if (task.skipped === true) { status = '[待補]'; color = '#fef3c7'; }
+                                    else if (isIncomplete) { status = '[不完整]'; color = '#fecaca'; }
+                                    else if (task.status === 'completed') { status = '[完成]'; color = '#d1fae5'; }
+                                    else { status = '[未填]'; color = '#ffffff'; }
+
+                                    const markPrefix = task.is_marked ? '⭐ ' : '';
+                                    
+                                    return <option key={task.id} value={task.sequence} style={{ backgroundColor: color }}>
+                                        {markPrefix}{status} 第 {task.sequence} 筆
+                                    </option>;
+                                })}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* [右側區塊] */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        
+                        {/* 3. 參考資源 */}
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '12px',
+                            borderRight: '1px solid #d1d5db', // 分隔線
+                            paddingRight: '20px'
+                        }}>
+                            <span style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📚 參考資源：
                             </span>
-                        )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ whiteSpace: 'nowrap' }}>跳到第幾筆:</span>
-                        <select
-                            value={selectedSequence}
-                            onChange={handleSequenceJump}
-                            style={{
-                                padding: '5px 10px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px',
-                                minWidth: '200px',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <option value="">請選擇...</option>
-                            {allTasks.map((task) => {
-                                let status = '';
-                                let color = '';
+                            <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
+                                📖 AI CUP 標註手冊 V2
+                            </a>
+                            <span style={{ color: '#cbd5e1' }}>|</span>
+                            <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
+                                📊 系統教學投影片（20251210版）
+                            </a>
+                        </div>
 
-                                // 使用驗證結果判斷是否不完整
-                                let isIncomplete = false;
-                                if (validationResult && task.status === 'completed') {
-                                    // 在驗證結果中找到對應的不完整任務
-                                    isIncomplete = validationResult.invalidTasks.some(
-                                        invTask => invTask.sequence === task.sequence
-                                    );
-                                }
+                        {/* 4. 五個操作按鈕 */}
+                        <div className="nav-btns" style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                                className="btn"
+                                onClick={onShowOverview}
+                                title="查看所有資料"
+                                style={{ background: '#6366f1', color: 'white', padding: '8px 12px', fontSize: '14px', fontWeight: 'bold' }}
+                            >
+                                所有資料
+                            </button>
+                            
+                            <button
+                                className="btn"
+                                onClick={handleToggleMark}
+                                disabled={!currentItem}
+                                title={isMarked ? "取消標記" : "標記此題"}
+                                style={{
+                                    background: isMarked ? '#ec4899' : '#e5e7eb',
+                                    color: isMarked ? 'white' : '#6b7280',
+                                    fontSize: '18px',
+                                    padding: '8px 12px',
+                                    transition: 'all 0.2s',
+                                    minWidth: '44px'
+                                }}
+                            >
+                                {isMarked ? '★' : '☆'}
+                            </button>
 
-                                if (task.skipped === true) {
-                                    status = '🟡 [待補]';
-                                    color = '#fef3c7';
-                                } else if (isIncomplete) {
-                                    status = '🔴 [不完整]';
-                                    color = '#fecaca';
-                                } else if (task.status === 'completed') {
-                                    status = '🟢 [完成]';
-                                    color = '#d1fae5';
-                                } else {
-                                    status = '⚪ [未填]';
-                                    color = '#ffffff';
-                                }
-                                return (
-                                    <option
-                                        key={task.id}
-                                        value={task.sequence}
-                                        style={{ backgroundColor: color }}
-                                    >
-                                        {status} 第 {task.sequence} 筆 (頁碼: {task.page_number})
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </div>
-                    <div className="nav-btns">
-                        <button
-                            className="btn"
-                            onClick={loadPreviousTask}
-                            disabled={progress.completed === 0}
-                            style={{marginRight: '10px'}}
-                        >
-                            ← 上一筆
-                        </button>
-                        <button
-                            className="btn"
-                            onClick={handleSkip}
-                            disabled={!currentItem}
-                            style={{
-                                marginRight: '10px',
-                                background: '#f59e0b',
-                                color: 'white'
-                            }}
-                        >
-                            ⏭️ 跳過
-                        </button>
-                        <button
-                            className="nav-btn btn-emerald"
-                            onClick={handleSaveAndNext}
-                            disabled={!currentItem}
-                        >
-                            儲存 & 下一筆
-                        </button>
+                            <button
+                                className="btn"
+                                onClick={loadPreviousTask}
+                                disabled={progress.completed === 0}
+                                style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
+                            >
+                                ← 上一筆
+                            </button>
+
+                            <button
+                                className="btn"
+                                onClick={handleSkip}
+                                disabled={!currentItem}
+                                style={{ background: '#f59e0b', color: 'white' }}
+                            >
+                                ⏭️ 跳過
+                            </button>
+
+                            <button
+                                className="nav-btn btn-emerald"
+                                onClick={handleSaveAndNext}
+                                disabled={!currentItem}
+                            >
+                                儲存 & 下一筆
+                            </button>
+                        </div>
                     </div>
                 </div>
-
-                {/* --- 教育訓練文件連結區 --- */}
-                    <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', gap: '15px', fontSize: '14px' }}>
-                        <span style={{ fontWeight: 'bold', color: '#4b5563' }}>📚 參考資源：</span>
-                        <a 
-                            href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}
-                            title="查看 HackMD 標註手冊"
-                        >
-                            📖 AI CUP 標註手冊 V2
-                        </a>
-                        <span style={{ color: '#cbd5e1' }}>|</span>
-                        <a 
-                            href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}
-                            title="查看教育訓練投影片"
-                        >
-                            📊 教育訓練投影片
-                        </a>
-                    </div>
 
                 {/* 批次對齊進度顯示 */}
                 {batchAlignProgress && (
@@ -1774,7 +2364,12 @@ export default function HomePage() {
   const [user, setUser] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
 
-  useEffect(() => {
+  // 控制是否顯示總覽頁面
+  const [showOverview, setShowOverview] = useState(false); 
+  // 暫存要跳轉的題號 (從總覽頁點回來時用)
+  const [jumpToSequence, setJumpToSequence] = useState(null);
+
+useEffect(() => {
     try {
       const savedUser = localStorage.getItem('annotatorUser');
       if (savedUser) {
@@ -1804,5 +2399,29 @@ export default function HomePage() {
     return <ProjectSelectionScreen user={user} onProjectSelect={setSelectedProject} onLogout={handleLogout} />;
   }
 
-  return <AnnotationScreen user={user} project={selectedProject} onBack={() => setSelectedProject(null)} />;
+  // --- 顯示總覽頁面邏輯 ---
+  if (showOverview) {
+      return (
+          <AllTasksOverviewScreen 
+              user={user} 
+              project={selectedProject} 
+              onBack={() => setShowOverview(false)}
+              onJumpToTask={(seq) => {
+                  setJumpToSequence(seq); // 設定要跳轉的題號
+                  setShowOverview(false); // 關閉總覽，回到標註頁
+              }}
+          />
+      );
+  }
+
+  return (
+      <AnnotationScreen 
+          user={user} 
+          project={selectedProject} 
+          onBack={() => setSelectedProject(null)} 
+          onShowOverview={() => setShowOverview(true)} // 傳遞切換函式
+          initialSequence={jumpToSequence} // 傳遞跳轉目標
+          onJumpConsumed={() => setJumpToSequence(null)} // 清除跳轉目標
+      />
+  );
 }
