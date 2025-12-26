@@ -15,7 +15,7 @@
     "@vercel/blob": "^2.0.0",
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",
-    "next": "15.5.7",
+    "next": "15.5.9",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.4.296",
     "react": "19.1.2",
