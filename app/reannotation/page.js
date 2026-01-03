@@ -9,6 +9,7 @@ export default function ReannotationPage() {
   const [user, setUser] = useState(null);
   const [queueData, setQueueData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
   const router = useRouter();
 
   // 主題配色
@@ -312,50 +313,76 @@ export default function ReannotationPage() {
 
             {/* 任務清單 */}
             <div>
-              {group.tasks.slice(0, 5).map(task => (
-                <div key={task.taskId} className="task-list-item">
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 'bold', color: theme.text }}>
-                        #{task.sourceDataId}
-                      </span>
-                      <span style={{ fontSize: '13px', color: theme.textSecondary }}>
-                        頁碼: {task.pageNumber}
-                      </span>
-                      {getStatusBadge(task.status)}
-                    </div>
-                    <div style={{ fontSize: '14px', color: theme.text, marginBottom: '8px', lineHeight: '1.5' }}>
-                      {task.originalData.substring(0, 120)}
-                      {task.originalData.length > 120 && '...'}
-                    </div>
-                    <div className="flagged-tasks">
-                      {Object.entries(task.tasksFlagged).map(([taskKey, score]) => (
-                        <span key={taskKey} className="flagged-badge">
-                          ⚠️ {getTaskName(taskKey)}
-                          <span className="score-badge">α={score.toFixed(2)}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <Link
-                      href={`/reannotation/${task.taskId}`}
-                      className="btn btn-primary"
-                      style={{ padding: '8px 16px', fontSize: '13px' }}
-                    >
-                      {task.status === 'submitted' ? '查看' : '開始修改'}
-                    </Link>
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                const groupKey = `${group.projectId}_${group.taskGroup}`;
+                const isExpanded = expandedGroups[groupKey];
+                const tasksToShow = isExpanded ? group.tasks : group.tasks.slice(0, 5);
 
-              {group.tasks.length > 5 && (
-                <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                  <p style={{ color: theme.textSecondary, fontSize: '14px' }}>
-                    還有 {group.tasks.length - 5} 筆任務...
-                  </p>
-                </div>
-              )}
+                return (
+                  <>
+                    {tasksToShow.map(task => (
+                      <div key={task.taskId} className="task-list-item">
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <span style={{ fontWeight: 'bold', color: theme.text }}>
+                              #{task.sourceDataId}
+                            </span>
+                            <span style={{ fontSize: '13px', color: theme.textSecondary }}>
+                              頁碼: {task.pageNumber}
+                            </span>
+                            {getStatusBadge(task.status)}
+                          </div>
+                          <div style={{ fontSize: '14px', color: theme.text, marginBottom: '8px', lineHeight: '1.5' }}>
+                            {task.originalData.substring(0, 120)}
+                            {task.originalData.length > 120 && '...'}
+                          </div>
+                          <div className="flagged-tasks">
+                            {Object.entries(task.tasksFlagged).map(([taskKey, score]) => (
+                              <span key={taskKey} className="flagged-badge">
+                                ⚠️ {getTaskName(taskKey)}
+                                <span className="score-badge">α={score.toFixed(2)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <Link
+                            href={`/reannotation/${task.taskId}`}
+                            className="btn btn-primary"
+                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                          >
+                            {task.status === 'submitted' ? '查看' : '開始修改'}
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+
+                    {group.tasks.length > 5 && (
+                      <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                        <button
+                          className="btn"
+                          onClick={() => setExpandedGroups(prev => ({
+                            ...prev,
+                            [groupKey]: !isExpanded
+                          }))}
+                          style={{
+                            background: theme.borderLight,
+                            color: theme.text,
+                            padding: '10px 20px',
+                            fontSize: '14px'
+                          }}
+                        >
+                          {isExpanded ? (
+                            <>↑ 收起 ({group.tasks.length - 5} 筆)</>
+                          ) : (
+                            <>↓ 顯示更多 ({group.tasks.length - 5} 筆任務)</>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         ))

@@ -68,10 +68,12 @@ export async function POST(request) {
 
       const task = taskRows[0];
 
-      // 2. 取得原始標註資料
+      // 2. 取得原始標註資料和專案資訊
       const { rows: oldAnnotations } = await sql`
-        SELECT * FROM annotations
-        WHERE source_data_id = ${sourceDataId} AND user_id = ${userId}
+        SELECT a.*, sd.project_id
+        FROM annotations a
+        JOIN source_data sd ON a.source_data_id = sd.id
+        WHERE a.source_data_id = ${sourceDataId} AND a.user_id = ${userId}
       `;
 
       const oldAnnotation = oldAnnotations.length > 0 ? oldAnnotations[0] : null;
@@ -130,7 +132,6 @@ export async function POST(request) {
       const newAnnotation = {
         source_data_id: sourceDataId,
         user_id: userId,
-        project_id: oldAnnotation.project_id,
         esg_type: oldAnnotation.esg_type,
         promise_status: answers.promise_status || oldAnnotation.promise_status,
         verification_timeline: answers.verification_timeline || oldAnnotation.verification_timeline,
@@ -146,10 +147,10 @@ export async function POST(request) {
         reannotation_comment: comment
       };
 
-      // 插入新的標註記錄
+      // 插入新的標註記錄（如果已存在則更新）
       await sql`
         INSERT INTO annotations (
-          source_data_id, user_id, project_id, esg_type,
+          source_data_id, user_id, esg_type,
           promise_status, verification_timeline, evidence_status, evidence_quality,
           promise_string, evidence_string,
           status, skipped,
@@ -158,7 +159,6 @@ export async function POST(request) {
         ) VALUES (
           ${newAnnotation.source_data_id},
           ${newAnnotation.user_id},
-          ${newAnnotation.project_id},
           ${newAnnotation.esg_type},
           ${newAnnotation.promise_status},
           ${newAnnotation.verification_timeline},
@@ -175,6 +175,20 @@ export async function POST(request) {
           NOW(),
           NOW()
         )
+        ON CONFLICT (source_data_id, user_id, version)
+        DO UPDATE SET
+          esg_type = EXCLUDED.esg_type,
+          promise_status = EXCLUDED.promise_status,
+          verification_timeline = EXCLUDED.verification_timeline,
+          evidence_status = EXCLUDED.evidence_status,
+          evidence_quality = EXCLUDED.evidence_quality,
+          promise_string = EXCLUDED.promise_string,
+          evidence_string = EXCLUDED.evidence_string,
+          status = EXCLUDED.status,
+          skipped = EXCLUDED.skipped,
+          persist_answer = EXCLUDED.persist_answer,
+          reannotation_comment = EXCLUDED.reannotation_comment,
+          updated_at = NOW()
       `;
 
       // 5. 更新任務狀態

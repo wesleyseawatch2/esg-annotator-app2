@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "migrate:skipped": "node scripts/migrate-add-skipped.js",
-    "migrate:reannotation": "node scripts/migrate-add-reannotation.js"
+    "migrate:reannotation": "node scripts/migrate-add-reannotation.js",
+    "migrate:fix-unique-constraint": "node scripts/migrate-fix-annotations-unique-constraint.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",

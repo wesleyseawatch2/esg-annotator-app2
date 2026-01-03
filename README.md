@@ -72,6 +72,9 @@ npm run migrate:skipped
 # 建立重標註功能資料表（必要）
 npm run migrate:reannotation
 
+# 修復重標註唯一性約束（支援版本控制）⭐ NEW
+npm run migrate:fix-unique-constraint
+
 # 其他 SQL 初始化請參考 docs/ 資料夾下的 sql 檔案
 ```
 
