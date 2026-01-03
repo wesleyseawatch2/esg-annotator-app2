@@ -540,12 +540,12 @@ export async function saveAnnotation(data) {
     await sql`
       INSERT INTO annotations (
         source_data_id, user_id, esg_type, promise_status, promise_string,
-        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, updated_at
+        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, version, updated_at
       ) VALUES (
         ${source_data_id}, ${user_id}, ${esgTypeArray}, ${promise_status}, ${promise_string},
-        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, NOW()
+        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, 1, NOW()
       )
-      ON CONFLICT (source_data_id, user_id)
+      ON CONFLICT (source_data_id, user_id, version)
       DO UPDATE SET
         esg_type = EXCLUDED.esg_type,
         promise_status = EXCLUDED.promise_status,
