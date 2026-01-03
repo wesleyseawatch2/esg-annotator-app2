@@ -45,6 +45,7 @@ export async function GET(request) {
     const whereClause = whereConditions.join(' AND ');
 
     // 查詢使用者的重標註任務（只查詢有權限的專案群組）
+    // 使用子查詢取得每個 source_data_id 和 user_id 的最新版本標註
     const { rows: tasks } = await sql.query(`
       SELECT
         rt.id as task_id,
@@ -74,7 +75,14 @@ export async function GET(request) {
       JOIN reannotation_rounds rr ON rt.round_id = rr.id
       JOIN source_data sd ON rt.source_data_id = sd.id
       JOIN projects p ON rr.project_id = p.id
-      LEFT JOIN annotations a ON rt.source_data_id = a.source_data_id AND a.user_id = rt.user_id
+      LEFT JOIN LATERAL (
+        SELECT *
+        FROM annotations
+        WHERE source_data_id = rt.source_data_id
+          AND user_id = rt.user_id
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1
+      ) a ON true
       WHERE ${whereClause}
         AND (
           p.group_id IS NULL

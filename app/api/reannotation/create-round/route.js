@@ -274,9 +274,9 @@ export async function POST(request) {
 
     const tasksToCheck = taskGroups[taskGroup];
 
-    // 取得專案標註資料
+    // 取得專案標註資料（取每個使用者的最新版本）
     const { rows: annotations } = await sql`
-      SELECT
+      SELECT DISTINCT ON (a.source_data_id, a.user_id)
         a.source_data_id,
         a.user_id,
         u.username,
@@ -290,7 +290,7 @@ export async function POST(request) {
       WHERE sd.project_id = ${projectId}
       AND a.status = 'completed'
       AND (a.skipped IS NULL OR a.skipped = FALSE)
-      ORDER BY a.source_data_id, u.username
+      ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
     `;
 
     if (annotations.length === 0) {
