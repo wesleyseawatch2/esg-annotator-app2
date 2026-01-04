@@ -1739,6 +1739,13 @@ export default function AdminPage() {
                     </button>
                     <button
                         className="btn"
+                        onClick={() => router.push('/admin/consistency-dashboard')}
+                        style={{ background: '#8b5cf6', color: 'white', marginRight: '10px' }}
+                    >
+                        📊 一致性儀表板
+                    </button>
+                    <button
+                        className="btn"
                         onClick={() => router.push('/admin/reannotation')}
                         style={{ background: '#f59e0b', color: 'white', marginRight: '10px' }}
                     >

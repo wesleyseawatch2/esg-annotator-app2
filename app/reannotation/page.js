@@ -295,7 +295,10 @@ export default function ReannotationPage() {
                 </h2>
                 <p style={{ margin: 0, color: theme.textSecondary, fontSize: '14px' }}>
                   任務組別: <strong>{getGroupName(group.taskGroup)}</strong> |
-                  輪次: <strong>Round {group.roundNumber}</strong> |
+                  重標註次數: <strong>第 {group.groupRoundNumber || 1} 次</strong>
+                  <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '4px' }}>
+                    (整體 Round {group.roundNumber})
+                  </span> |
                   門檻: <strong>{group.threshold}</strong>
                 </p>
               </div>
