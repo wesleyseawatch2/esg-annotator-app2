@@ -2,7 +2,7 @@
 'use server';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
-import { del, put } from '@vercel/blob';
+import { put } from '@vercel/blob';
 import { PDFDocument } from 'pdf-lib';
 
 // --- 刪除專案（完全刪除）---
@@ -13,29 +13,18 @@ export async function deleteProject(userId, projectId) {
       return { success: false, error: '權限不足' };
     }
 
-    // 1. 先取得專案的 pdf_urls，以便刪除 Blob 中的檔案
+    // 取得專案資訊
     const { rows: projectRows } = await sql`
-      SELECT pdf_urls FROM projects WHERE id = ${projectId};
+      SELECT name FROM projects WHERE id = ${projectId};
     `;
 
-    let deletedBlobCount = 0;
-    if (projectRows.length > 0 && projectRows[0].pdf_urls) {
-      const pdfUrls = projectRows[0].pdf_urls;
-      const urls = Object.values(pdfUrls);
-
-      // 刪除 Vercel Blob 中的所有 PDF 檔案
-      for (const url of urls) {
-        try {
-          await del(url);
-          deletedBlobCount++;
-        } catch (blobError) {
-          console.error(`刪除 Blob 失敗 (${url}):`, blobError.message);
-          // 繼續刪除其他檔案，不中斷流程
-        }
-      }
+    if (projectRows.length === 0) {
+      return { success: false, error: '專案不存在' };
     }
 
-    // 2. 刪除資料庫中的所有相關資料
+    const projectName = projectRows[0].name;
+
+    // 刪除資料庫中的所有相關資料（保留 PDF 檔案）
     await sql`DELETE FROM annotations WHERE source_data_id IN (SELECT id FROM source_data WHERE project_id = ${projectId});`;
     await sql`DELETE FROM source_data WHERE project_id = ${projectId};`;
     await sql`DELETE FROM projects WHERE id = ${projectId};`;
@@ -43,7 +32,7 @@ export async function deleteProject(userId, projectId) {
     revalidatePath('/admin');
     return {
       success: true,
-      message: `專案已完全刪除（包含 ${deletedBlobCount} 個 PDF 檔案）`
+      message: `專案「${projectName}」已刪除（PDF 檔案已保留）`
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -169,6 +158,99 @@ export async function updateProjectName(userId, projectId, newName) {
 
     if (existingRows.length > 0) {
       return { success: false, error: '此專案名稱已存在' };
+    }
+
+    // 取得舊的專案名稱
+    const { rows: oldProjectRows } = await sql`
+      SELECT name FROM projects WHERE id = ${projectId};
+    `;
+
+    if (oldProjectRows.length === 0) {
+      return { success: false, error: '專案不存在' };
+    }
+
+    const oldName = oldProjectRows[0].name;
+
+    // 解析舊專案名稱的公司資訊
+    const oldParts = oldName.split('_');
+    if (oldParts.length >= 2) {
+      const oldGroupName = oldParts[0];
+      const oldCompanyCode = oldParts.slice(1).join('_');
+
+      // 解析新專案名稱的公司資訊
+      const newParts = newName.trim().split('_');
+      if (newParts.length >= 2) {
+        const newGroupName = newParts[0];
+        const newCompanyCode = newParts.slice(1).join('_');
+
+        // 如果公司資訊改變了，需要更新 companies 表
+        if (oldGroupName !== newGroupName || oldCompanyCode !== newCompanyCode) {
+          // 檢查舊的公司記錄是否存在
+          const { rows: oldCompanyRows } = await sql`
+            SELECT id FROM companies
+            WHERE code = ${oldCompanyCode} AND group_name = ${oldGroupName};
+          `;
+
+          if (oldCompanyRows.length > 0) {
+            const oldCompanyId = oldCompanyRows[0].id;
+
+            // 檢查是否有其他專案使用相同的公司代碼
+            const { rows: otherProjectsRows } = await sql`
+              SELECT COUNT(*) as count FROM projects
+              WHERE id != ${projectId}
+                AND name LIKE ${oldGroupName + '_' + oldCompanyCode + '%'};
+            `;
+
+            const hasOtherProjects = parseInt(otherProjectsRows[0]?.count || 0) > 0;
+
+            if (!hasOtherProjects) {
+              // 如果沒有其他專案使用這個公司代碼，更新公司記錄
+              await sql`
+                UPDATE companies
+                SET code = ${newCompanyCode},
+                    group_name = ${newGroupName},
+                    name = ${newCompanyCode},
+                    updated_at = NOW()
+                WHERE id = ${oldCompanyId};
+              `;
+            } else {
+              // 如果有其他專案使用這個公司代碼，需要建立新的公司記錄
+              // 首先檢查新的公司記錄是否已存在
+              const { rows: newCompanyRows } = await sql`
+                SELECT id FROM companies
+                WHERE code = ${newCompanyCode} AND group_name = ${newGroupName};
+              `;
+
+              if (newCompanyRows.length === 0) {
+                // 計算新專案的資料總筆數
+                const { rows: stats } = await sql`
+                  SELECT COUNT(*) as total FROM source_data WHERE project_id = ${projectId};
+                `;
+                const totalRecords = parseInt(stats[0]?.total || 0);
+
+                // 建立新公司記錄
+                await sql`
+                  INSERT INTO companies (code, name, group_name, total_records)
+                  VALUES (${newCompanyCode}, ${newCompanyCode}, ${newGroupName}, ${totalRecords});
+                `;
+              }
+
+              // 更新舊公司的資料筆數（減去這個專案的筆數）
+              const { rows: projectStats } = await sql`
+                SELECT COUNT(*) as total FROM source_data WHERE project_id = ${projectId};
+              `;
+              const projectRecords = parseInt(projectStats[0]?.total || 0);
+
+              await sql`
+                UPDATE companies
+                SET total_records = GREATEST(0, total_records - ${projectRecords}),
+                    updated_at = NOW()
+                WHERE id = ${oldCompanyId};
+              `;
+            }
+          }
+        }
+      }
     }
 
     // 更新專案名稱
@@ -1009,6 +1091,186 @@ export async function getAllCompanies(userId) {
   }
 }
 
+// --- 診斷重複的公司記錄 ---
+export async function diagnoseDuplicateCompanies(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 取得所有公司記錄
+    const { rows: companies } = await sql`
+      SELECT
+        id,
+        code,
+        name,
+        group_name,
+        total_records,
+        assigned_records,
+        created_at
+      FROM companies
+      ORDER BY group_name, code, created_at;
+    `;
+
+    // 取得所有專案
+    const { rows: projects } = await sql`
+      SELECT id, name FROM projects;
+    `;
+
+    // 建立專案對應的公司代碼集合
+    const projectCompanies = new Map();
+    projects.forEach(project => {
+      const parts = project.name.split('_');
+      if (parts.length >= 2) {
+        const groupName = parts[0];
+        const companyCode = parts.slice(1).join('_');
+        const key = `${groupName}|${companyCode}`;
+
+        if (!projectCompanies.has(key)) {
+          projectCompanies.set(key, []);
+        }
+        projectCompanies.get(key).push(project.name);
+      }
+    });
+
+    // 找出重複的公司記錄（相同 group_name + code）
+    const companyGroups = new Map();
+    companies.forEach(company => {
+      const key = `${company.group_name}|${company.code}`;
+      if (!companyGroups.has(key)) {
+        companyGroups.set(key, []);
+      }
+      companyGroups.get(key).push(company);
+    });
+
+    // 找出重複項目
+    const duplicates = [];
+    const orphans = [];
+
+    companyGroups.forEach((companyList, key) => {
+      const [groupName, companyCode] = key.split('|');
+      const hasProjects = projectCompanies.has(key);
+      const projectNames = projectCompanies.get(key) || [];
+
+      if (companyList.length > 1) {
+        // 有重複的公司記錄
+        duplicates.push({
+          groupName,
+          companyCode,
+          count: companyList.length,
+          hasProjects,
+          projectNames,
+          companies: companyList.map(c => ({
+            id: c.id,
+            name: c.name,
+            total_records: c.total_records,
+            assigned_records: c.assigned_records,
+            created_at: c.created_at
+          }))
+        });
+      } else if (!hasProjects) {
+        // 沒有對應專案的孤立記錄
+        orphans.push({
+          groupName,
+          companyCode,
+          company: companyList[0]
+        });
+      }
+    });
+
+    // 統計資訊
+    const summary = {
+      totalCompanies: companies.length,
+      totalProjects: projects.length,
+      duplicateGroups: duplicates.length,
+      duplicateRecords: duplicates.reduce((sum, d) => sum + d.count, 0),
+      orphanRecords: orphans.length
+    };
+
+    return {
+      success: true,
+      summary,
+      duplicates,
+      orphans
+    };
+  } catch (error) {
+    console.error('診斷重複公司記錄失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- 清理孤立的公司記錄 ---
+export async function cleanOrphanCompanies(userId) {
+  try {
+    const { rows: userRows } = await sql`SELECT role FROM users WHERE id = ${userId};`;
+    if (userRows.length === 0 || userRows[0].role !== 'admin') {
+      return { success: false, error: '權限不足' };
+    }
+
+    // 取得所有公司記錄
+    const { rows: companies } = await sql`
+      SELECT id, code, group_name FROM companies;
+    `;
+
+    // 取得所有專案
+    const { rows: projects } = await sql`
+      SELECT id, name FROM projects;
+    `;
+
+    // 建立專案公司對應集合
+    const projectCompanies = new Set();
+    projects.forEach(project => {
+      const parts = project.name.split('_');
+      if (parts.length >= 2) {
+        const groupName = parts[0];
+        const companyCode = parts.slice(1).join('_');
+        projectCompanies.add(`${groupName}|${companyCode}`);
+      }
+    });
+
+    // 找出孤立的公司記錄
+    const orphanCompanies = [];
+    for (const company of companies) {
+      const key = `${company.group_name}|${company.code}`;
+      if (!projectCompanies.has(key)) {
+        orphanCompanies.push(company);
+      }
+    }
+
+    // 刪除孤立的公司記錄
+    let deletedCount = 0;
+    for (const orphan of orphanCompanies) {
+      // 檢查是否有分配記錄
+      const { rows: assignments } = await sql`
+        SELECT COUNT(*) as count FROM company_data_assignments WHERE company_id = ${orphan.id};
+      `;
+
+      const hasAssignments = parseInt(assignments[0]?.count || 0) > 0;
+
+      if (hasAssignments) {
+        // 如果有分配記錄，先刪除分配記錄
+        await sql`DELETE FROM company_data_assignments WHERE company_id = ${orphan.id};`;
+      }
+
+      // 刪除公司記錄
+      await sql`DELETE FROM companies WHERE id = ${orphan.id};`;
+      deletedCount++;
+    }
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `清理完成！刪除 ${deletedCount} 筆孤立的公司記錄。`,
+      deletedCount,
+      orphans: orphanCompanies.map(c => `${c.group_name}_${c.code}`)
+    };
+  } catch (error) {
+    console.error('清理孤立公司記錄失敗:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // --- 檢查資料範圍是否已被分配 ---
 async function checkRangeOverlap(companyId, startRecord, endRecord) {
   const { rows: overlaps } = await sql`
@@ -1336,9 +1598,9 @@ export async function removeCompanyDataAssignment(userId, assignmentId) {
       return { success: false, error: '權限不足' };
     }
 
-    // 取得分配資訊
+    // 取得分配資訊（包含 project_id）
     const { rows: assignment } = await sql`
-      SELECT company_id, record_count, start_record, end_record
+      SELECT company_id, project_id, record_count, start_record, end_record
       FROM company_data_assignments
       WHERE id = ${assignmentId};
     `;
@@ -1347,30 +1609,112 @@ export async function removeCompanyDataAssignment(userId, assignmentId) {
       return { success: false, error: '分配記錄不存在' };
     }
 
-    const { company_id, record_count, start_record, end_record } = assignment[0];
+    const { company_id, project_id, record_count, start_record, end_record } = assignment[0];
 
-    // 刪除分配記錄
-    await sql`DELETE FROM company_data_assignments WHERE id = ${assignmentId};`;
-
-    // 更新公司已分配記錄數
-    const { rows: remainingCount } = await sql`
-      SELECT SUM(record_count) as total
+    // 檢查該專案是否有其他分配記錄
+    const { rows: otherAssignments } = await sql`
+      SELECT COUNT(*) as count
       FROM company_data_assignments
-      WHERE company_id = ${company_id};
+      WHERE project_id = ${project_id} AND id != ${assignmentId};
     `;
 
-    await sql`
-      UPDATE companies
-      SET assigned_records = ${remainingCount[0]?.total || 0},
-          updated_at = NOW()
-      WHERE id = ${company_id};
-    `;
+    const hasOtherAssignments = parseInt(otherAssignments[0]?.count || 0) > 0;
 
-    revalidatePath('/admin');
-    return {
-      success: true,
-      message: `已撤銷分配，釋放 ${record_count} 筆資料 (${start_record}-${end_record})`
-    };
+    // 取得專案資訊
+    const { rows: projectRows } = await sql`
+      SELECT name FROM projects WHERE id = ${project_id};
+    `;
+    const projectName = projectRows[0]?.name || '未知專案';
+
+    if (hasOtherAssignments) {
+      // 如果專案有其他分配記錄（合併到現有專案的情況），需要刪除對應的 source_data
+      // 首先取得來源專案
+      const { rows: companyRows } = await sql`
+        SELECT code, group_name FROM companies WHERE id = ${company_id};
+      `;
+      const company = companyRows[0];
+      const sourceProjectName = `${company.group_name}_${company.code}`;
+
+      const { rows: sourceProjectRows } = await sql`
+        SELECT id FROM projects WHERE name = ${sourceProjectName};
+      `;
+
+      if (sourceProjectRows.length > 0) {
+        const sourceProjectId = sourceProjectRows[0].id;
+
+        // 取得要刪除的 source_data ID（從來源專案中按範圍查詢）
+        const recordCount = end_record - start_record + 1;
+        const { rows: sourceDataToDelete } = await sql`
+          SELECT original_data, page_number, bbox
+          FROM source_data
+          WHERE project_id = ${sourceProjectId}
+          ORDER BY id
+          LIMIT ${recordCount} OFFSET ${start_record - 1};
+        `;
+
+        // 在目標專案中刪除對應的 source_data
+        for (const sourceData of sourceDataToDelete) {
+          await sql`
+            DELETE FROM source_data
+            WHERE project_id = ${project_id}
+              AND original_data = ${sourceData.original_data}
+              AND page_number = ${sourceData.page_number}
+            LIMIT 1;
+          `;
+        }
+      }
+
+      // 刪除分配記錄
+      await sql`DELETE FROM company_data_assignments WHERE id = ${assignmentId};`;
+
+      // 更新公司已分配記錄數
+      const { rows: remainingCount } = await sql`
+        SELECT SUM(record_count) as total
+        FROM company_data_assignments
+        WHERE company_id = ${company_id};
+      `;
+
+      await sql`
+        UPDATE companies
+        SET assigned_records = ${remainingCount[0]?.total || 0},
+            updated_at = NOW()
+        WHERE id = ${company_id};
+      `;
+
+      revalidatePath('/admin');
+      revalidatePath('/');
+      return {
+        success: true,
+        message: `已從專案「${projectName}」中撤銷分配，移除 ${record_count} 筆資料 (${start_record}-${end_record})`
+      };
+    } else {
+      // 如果專案只有這一個分配記錄（新建專案的情況），刪除整個專案
+      // 刪除專案會自動級聯刪除 source_data 和 annotations (ON DELETE CASCADE)
+      await sql`DELETE FROM company_data_assignments WHERE id = ${assignmentId};`;
+      await sql`DELETE FROM source_data WHERE project_id = ${project_id};`;
+      await sql`DELETE FROM projects WHERE id = ${project_id};`;
+
+      // 更新公司已分配記錄數
+      const { rows: remainingCount } = await sql`
+        SELECT SUM(record_count) as total
+        FROM company_data_assignments
+        WHERE company_id = ${company_id};
+      `;
+
+      await sql`
+        UPDATE companies
+        SET assigned_records = ${remainingCount[0]?.total || 0},
+            updated_at = NOW()
+        WHERE id = ${company_id};
+      `;
+
+      revalidatePath('/admin');
+      revalidatePath('/');
+      return {
+        success: true,
+        message: `已撤銷分配並刪除專案「${projectName}」，釋放 ${record_count} 筆資料 (${start_record}-${end_record})`
+      };
+    }
   } catch (error) {
     console.error('移除分配失敗:', error);
     return { success: false, error: error.message };

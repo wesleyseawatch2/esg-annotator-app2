@@ -12,7 +12,8 @@ import {
     deleteAnnouncement, toggleAnnouncementStatus,
     scanAndCreateCompanyRecords, getAllCompanies, assignCompanyDataToNewProject,
     assignCompanyDataToExistingProject, getCompanyAssignmentDetails,
-    removeCompanyDataAssignment, getAvailableRanges
+    removeCompanyDataAssignment, getAvailableRanges, diagnoseDuplicateCompanies,
+    cleanOrphanCompanies
 } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
@@ -67,6 +68,8 @@ export default function AdminPage() {
     const [assignmentMode, setAssignmentMode] = useState('new'); // 'new' or 'existing'
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectGroupId, setNewProjectGroupId] = useState(null);
+    const [diagnosticResult, setDiagnosticResult] = useState(null);
+    const [showDiagnostic, setShowDiagnostic] = useState(false);
     const [existingProjectId, setExistingProjectId] = useState(null);
     const [companyAssignments, setCompanyAssignments] = useState([]);
     const [availableRanges, setAvailableRanges] = useState([]);
@@ -848,6 +851,51 @@ export default function AdminPage() {
             await loadCompanies();
         } else {
             alert(`掃描失敗: ${result.error}`);
+        }
+    };
+
+    const handleDiagnose = async () => {
+        setIsUploading(true);
+        setUploadProgress('正在診斷重複公司記錄...');
+
+        const result = await diagnoseDuplicateCompanies(user.id);
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            setDiagnosticResult(result);
+            setShowDiagnostic(true);
+        } else {
+            alert(`診斷失敗: ${result.error}`);
+        }
+    };
+
+    const handleCleanOrphans = async () => {
+        if (!window.confirm('確定要清理所有孤立的公司記錄嗎？此操作無法復原！')) {
+            return;
+        }
+
+        setIsUploading(true);
+        setUploadProgress('正在清理孤立的公司記錄...');
+
+        const result = await cleanOrphanCompanies(user.id);
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            alert(result.message + '\n已刪除：\n' + result.orphans.join('\n'));
+            await loadCompanies();
+            // 重新診斷以更新顯示
+            if (showDiagnostic) {
+                const diagResult = await diagnoseDuplicateCompanies(user.id);
+                if (diagResult.success) {
+                    setDiagnosticResult(diagResult);
+                }
+            }
+        } else {
+            alert(`清理失敗: ${result.error}`);
         }
     };
 
@@ -2295,10 +2343,123 @@ export default function AdminPage() {
                                 >
                                     🔍 掃描專案並建立公司記錄
                                 </button>
+                                <button
+                                    className="btn"
+                                    onClick={handleDiagnose}
+                                    disabled={isUploading}
+                                    style={{background: '#f59e0b', color: 'white', marginLeft: '10px'}}
+                                >
+                                    🔬 診斷重複公司記錄
+                                </button>
                                 {companies.length > 0 && (
                                     <p style={{marginTop: '10px', fontSize: '14px', color: '#10b981'}}>
                                         ✓ 已載入 {companies.length} 家公司
                                     </p>
+                                )}
+
+                                {/* 診斷結果顯示 */}
+                                {showDiagnostic && diagnosticResult && (
+                                    <div style={{marginTop: '20px', padding: '15px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #f59e0b'}}>
+                                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
+                                            <h4 style={{margin: 0}}>📊 診斷結果</h4>
+                                            <button
+                                                onClick={() => setShowDiagnostic(false)}
+                                                style={{background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer'}}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+
+                                        {/* 摘要 */}
+                                        <div style={{marginBottom: '15px', padding: '10px', background: 'white', borderRadius: '5px'}}>
+                                            <h5>📈 統計摘要</h5>
+                                            <ul style={{margin: '10px 0', paddingLeft: '20px', fontSize: '14px'}}>
+                                                <li>總公司記錄數: {diagnosticResult.summary.totalCompanies}</li>
+                                                <li>總專案數: {diagnosticResult.summary.totalProjects}</li>
+                                                <li style={{color: '#dc2626', fontWeight: 'bold'}}>
+                                                    重複組別數: {diagnosticResult.summary.duplicateGroups}
+                                                </li>
+                                                <li style={{color: '#dc2626', fontWeight: 'bold'}}>
+                                                    重複記錄總數: {diagnosticResult.summary.duplicateRecords}
+                                                </li>
+                                                <li style={{color: '#f59e0b'}}>
+                                                    孤立記錄數（無對應專案）: {diagnosticResult.summary.orphanRecords}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        {/* 重複記錄詳情 */}
+                                        {diagnosticResult.duplicates.length > 0 && (
+                                            <div style={{marginBottom: '15px'}}>
+                                                <h5 style={{color: '#dc2626'}}>⚠️ 重複的公司記錄</h5>
+                                                {diagnosticResult.duplicates.map((dup, idx) => (
+                                                    <div key={idx} style={{marginBottom: '15px', padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #fca5a5'}}>
+                                                        <div style={{fontWeight: 'bold', marginBottom: '8px'}}>
+                                                            {dup.groupName}_{dup.companyCode} ({dup.count} 筆重複)
+                                                        </div>
+                                                        {dup.hasProjects && (
+                                                            <div style={{fontSize: '12px', color: '#059669', marginBottom: '8px'}}>
+                                                                ✓ 對應專案: {dup.projectNames.join(', ')}
+                                                            </div>
+                                                        )}
+                                                        <table style={{width: '100%', fontSize: '12px', borderCollapse: 'collapse'}}>
+                                                            <thead>
+                                                                <tr style={{background: '#f9fafb'}}>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>ID</th>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>名稱</th>
+                                                                    <th style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>總記錄</th>
+                                                                    <th style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>已分配</th>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>建立時間</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {dup.companies.map(comp => (
+                                                                    <tr key={comp.id}>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>{comp.id}</td>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>{comp.name}</td>
+                                                                        <td style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>{comp.total_records}</td>
+                                                                        <td style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>{comp.assigned_records}</td>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>
+                                                                            {new Date(comp.created_at).toLocaleString('zh-TW')}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* 孤立記錄 */}
+                                        {diagnosticResult.orphans.length > 0 && (
+                                            <div>
+                                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+                                                    <h5 style={{color: '#f59e0b', margin: 0}}>🔍 孤立的公司記錄（無對應專案）</h5>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={handleCleanOrphans}
+                                                        disabled={isUploading}
+                                                        style={{
+                                                            background: '#dc2626',
+                                                            color: 'white',
+                                                            padding: '5px 15px',
+                                                            fontSize: '12px'
+                                                        }}
+                                                    >
+                                                        🗑️ 清理所有孤立記錄
+                                                    </button>
+                                                </div>
+                                                <ul style={{fontSize: '12px', margin: '10px 0', paddingLeft: '20px'}}>
+                                                    {diagnosticResult.orphans.map((orphan, idx) => (
+                                                        <li key={idx}>
+                                                            {orphan.groupName}_{orphan.companyCode} (ID: {orphan.company.id})
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
