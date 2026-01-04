@@ -494,7 +494,14 @@ export default function ReannotationDetailPage() {
                 </label>
                 <select
                   value={formData.promise_status}
-                  onChange={(e) => setFormData({ ...formData, promise_status: e.target.value })}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    setFormData({
+                      ...formData,
+                      promise_status: newStatus,
+                      verification_timeline: newStatus === 'No' ? 'N/A' : formData.verification_timeline
+                    });
+                  }}
                 >
                   <option value="">請選擇</option>
                   <option value="Yes">Yes</option>
@@ -512,12 +519,20 @@ export default function ReannotationDetailPage() {
                 <select
                   value={formData.verification_timeline}
                   onChange={(e) => setFormData({ ...formData, verification_timeline: e.target.value })}
+                  disabled={formData.promise_status === 'No'}
                 >
-                  <option value="">請選擇</option>
-                  <option value="within_2_years">2年內</option>
-                  <option value="between_2_and_5_years">2-5年</option>
-                  <option value="longer_than_5_years">5年以上</option>
-                  <option value="already">已執行</option>
+                  {formData.promise_status === 'No' ? (
+                    <option value="N/A">N/A</option>
+                  ) : (
+                    <>
+                      <option value="">請選擇</option>
+                      <option value="within_2_years">2年內</option>
+                      <option value="between_2_and_5_years">2-5年</option>
+                      <option value="longer_than_5_years">5年以上</option>
+                      <option value="already">已執行</option>
+                      <option value="N/A">N/A</option>
+                    </>
+                  )}
                 </select>
               </div>
             )}
