@@ -7,100 +7,178 @@ import { sql } from '@vercel/postgres';
  * POST /api/batch-calculate-agreement
  */
 
-// Krippendorff's Alpha 計算函數（與原有 calculate-agreement 相同）
-function calculateKrippendorffsAlpha(matrix, valueSet) {
-    const n = matrix.length; // 標註者數量
-    const m = matrix[0]?.length || 0; // 案例數量
+/**
+ * 計算 Krippendorff's Alpha (Nominal level)
+ * 使用與 calculate-agreement 相同的完整演算法
+ * @param {Array<Array<any>>} data - 資料矩陣 (rows=raters, cols=items)
+ * @returns {number} - Alpha 值
+ */
+function calculateKrippendorffsAlpha(data) {
+    const matrix = data;
+    const nRaters = matrix.length;
+    const nItems = matrix[0] ? matrix[0].length : 0;
 
-    if (n < 2 || m === 0) {
-        return { alpha: null, error: '至少需要 2 位標註者和 1 個案例' };
-    }
+    if (nRaters === 0 || nItems === 0) return NaN;
 
-    // 1. 建立 coincidence matrix
-    const coincidenceMatrix = {};
-    valueSet.forEach(v1 => {
-        coincidenceMatrix[v1] = {};
-        valueSet.forEach(v2 => {
-            coincidenceMatrix[v1][v2] = 0;
-        });
-    });
+    // 收集所有唯一值並建立映射
+    const allValues = new Set();
+    matrix.forEach(row => row.forEach(val => {
+        if (val !== null && val !== undefined) {
+            allValues.add(val);
+        }
+    }));
 
-    // 2. 填充 coincidence matrix
-    for (let j = 0; j < m; j++) {
-        const values = matrix.map(row => row[j]).filter(v => v !== null && v !== undefined);
-        const mu = values.length;
-        if (mu < 2) continue;
+    const values = Array.from(allValues).sort();
+    const valueToIndex = new Map();
+    values.forEach((val, idx) => valueToIndex.set(val, idx));
 
-        for (let i = 0; i < values.length; i++) {
-            for (let k = 0; k < values.length; k++) {
-                if (i !== k) {
-                    const v1 = values[i];
-                    const v2 = values[k];
-                    coincidenceMatrix[v1][v2] += 1 / (mu - 1);
+    const nValues = values.length;
+    if (nValues === 0) return NaN;
+
+    // 建立 coincidence matrix
+    const coincidenceMatrix = Array(nValues).fill(0).map(() => Array(nValues).fill(0));
+
+    // 對每個 item (column) 計算 pairwise comparisons
+    for (let item = 0; item < nItems; item++) {
+        const itemValues = [];
+        for (let rater = 0; rater < nRaters; rater++) {
+            const val = matrix[rater][item];
+            if (val !== null && val !== undefined) {
+                itemValues.push(val);
+            }
+        }
+
+        const m = itemValues.length;
+        if (m < 2) continue;
+
+        // 對每一對評分者進行比較
+        for (let i = 0; i < m; i++) {
+            for (let j = 0; j < m; j++) {
+                if (i !== j) {
+                    const vi = valueToIndex.get(itemValues[i]);
+                    const vj = valueToIndex.get(itemValues[j]);
+                    coincidenceMatrix[vi][vj] += 1 / (m - 1);
                 }
             }
         }
     }
 
-    // 3. 計算 marginal totals
-    const nc = {};
-    valueSet.forEach(v => {
-        nc[v] = valueSet.reduce((sum, v2) => sum + coincidenceMatrix[v][v2], 0);
-    });
+    // 計算 marginal totals (nc)
+    const nc = Array(nValues).fill(0);
+    for (let c = 0; c < nValues; c++) {
+        for (let k = 0; k < nValues; k++) {
+            nc[c] += coincidenceMatrix[c][k];
+        }
+    }
 
-    const totalObs = Object.values(nc).reduce((a, b) => a + b, 0);
-    if (totalObs === 0) return { alpha: null, error: '無有效觀測值' };
+    const n = nc.reduce((sum, val) => sum + val, 0);
+    if (n === 0) return NaN;
 
-    // 4. 計算 observed disagreement (Do)
+    // 計算 observed disagreement (Do)
     let Do = 0;
-    valueSet.forEach(v1 => {
-        valueSet.forEach(v2 => {
-            if (v1 !== v2) {
-                Do += coincidenceMatrix[v1][v2];
+    for (let c = 0; c < nValues; c++) {
+        for (let k = 0; k < nValues; k++) {
+            if (c !== k) {
+                Do += coincidenceMatrix[c][k];
             }
-        });
-    });
+        }
+    }
 
-    // 5. 計算 expected disagreement (De)
+    // 計算 expected disagreement (De)
     let De = 0;
-    valueSet.forEach(v1 => {
-        valueSet.forEach(v2 => {
-            if (v1 !== v2) {
-                De += nc[v1] * nc[v2];
+    for (let c = 0; c < nValues; c++) {
+        for (let k = 0; k < nValues; k++) {
+            if (c !== k) {
+                De += nc[c] * nc[k];
             }
-        });
-    });
-    De = De / (totalObs - 1);
+        }
+    }
 
-    // 6. 計算 Alpha
+    if (n <= 1) {
+        De = 0;
+    } else {
+        De = De / (n - 1);
+    }
+
     if (De === 0) {
-        return { alpha: Do === 0 ? 1.0 : null, error: De === 0 && Do !== 0 ? '期望不一致為零但觀察到不一致' : null };
+        return Do === 0 ? 1.0 : 0.0;
     }
 
     const alpha = 1 - (Do / De);
-    return { alpha, error: null };
+    return alpha;
 }
 
-// 計算局部 Alpha (local alpha)
-function calculateLocalAlpha(annotations, task) {
-    if (annotations.length < 2) return null;
+/**
+ * 計算 Local Alpha (單題爭議程度)
+ * 使用與 calculate-agreement 相同的演算法
+ * @param {Array} itemData - 單一題目的所有評分者答案 (包含 'N/A')
+ * @param {Array<Array>} allData - 完整的資料矩陣 (包含 'N/A'),用於計算 De
+ * @returns {number} - Local Alpha 分數
+ */
+function calculateLocalAlpha(itemData, allData) {
+    const values = itemData;
+    const m = values.length;
 
-    const values = annotations.map(a => a[task]).filter(v => v !== null && v !== undefined && v !== '' && v !== 'N/A');
+    if (m < 2) return NaN;
 
-    if (values.length < 2) return null;
+    // 計算整體資料的唯一值 (包括 'N/A')
+    const allValuesSet = new Set();
+    allData.forEach(row => {
+        row.forEach(val => {
+            allValuesSet.add(val);
+        });
+    });
 
-    const uniqueValues = [...new Set(values)];
-    if (uniqueValues.length === 1) return 1.0;
+    const uniqueVals = Array.from(allValuesSet);
 
-    const valueSet = [...new Set(annotations.flatMap(a => {
-        const val = a[task];
-        return (val && val !== 'N/A') ? [val] : [];
-    }))];
+    // 計算整體的 De (expected disagreement)
+    const flattened = [];
+    allData.forEach(row => {
+        row.forEach(val => {
+            flattened.push(val);
+        });
+    });
 
-    const matrix = annotations.map(a => [a[task] || 'N/A']);
-    const result = calculateKrippendorffsAlpha(matrix, [...new Set([...valueSet, 'N/A'])]);
+    const nTotal = flattened.length;
+    if (nTotal === 0) return NaN;
 
-    return result.alpha;
+    const counts = {};
+    uniqueVals.forEach(v => {
+        counts[v] = flattened.filter(val => val === v).length;
+    });
+
+    let sumNcSq = 0;
+    for (const val of uniqueVals) {
+        sumNcSq += (counts[val] || 0) ** 2;
+    }
+
+    let De;
+    if (nTotal <= 1) {
+        De = 0;
+    } else {
+        De = (nTotal ** 2 - sumNcSq) / (nTotal * (nTotal - 1));
+    }
+
+    // 計算此題目的 Du (observed disagreement)
+    const uCounts = {};
+    uniqueVals.forEach(v => {
+        uCounts[v] = values.filter(val => val === v).length;
+    });
+
+    let sumNuSq = 0;
+    for (const val of uniqueVals) {
+        sumNuSq += (uCounts[val] || 0) ** 2;
+    }
+
+    const Du = (m ** 2 - sumNuSq) / (m * (m - 1));
+
+    // 計算 Local Alpha
+    if (De === 0) {
+        return Du === 0 ? 1.0 : 0.0;
+    }
+
+    const score = 1 - (Du / De);
+    return score;
 }
 
 export async function POST(request) {
@@ -200,7 +278,7 @@ export async function POST(request) {
                 if (cached.rows[0].count > 0) {
                     cachedCount++;
 
-                    // 從快取讀取結果
+                    // 從快取讀取 local scores
                     const cachedScores = await sql`
                         SELECT
                             source_data_id,
@@ -214,6 +292,39 @@ export async function POST(request) {
                         ORDER BY source_data_id, task_name
                     `;
 
+                    // 從快取讀取 global alpha
+                    const cachedGlobalAlpha = await sql`
+                        SELECT
+                            task_name,
+                            global_alpha,
+                            data_count,
+                            calculated_at
+                        FROM global_alpha_cache
+                        WHERE project_id = ${project.id}
+                            AND round_number = 0
+                        ORDER BY task_name
+                    `;
+
+                    // 重建 globalResults 結構
+                    const globalResults = cachedGlobalAlpha.rows.map(row => ({
+                        task: row.task_name,
+                        globalAlpha: row.global_alpha,
+                        count: row.data_count
+                    }));
+
+                    // 重建 detailedResults 結構
+                    const detailedResultsMap = new Map();
+                    cachedScores.rows.forEach(score => {
+                        if (!detailedResultsMap.has(score.source_data_id)) {
+                            detailedResultsMap.set(score.source_data_id, {
+                                source_data_id: score.source_data_id,
+                                scores: {}
+                            });
+                        }
+                        detailedResultsMap.get(score.source_data_id).scores[score.task_name] = score.local_score;
+                    });
+                    const detailedResults = Array.from(detailedResultsMap.values());
+
                     results.push({
                         projectId: project.id,
                         projectName: project.name,
@@ -224,7 +335,9 @@ export async function POST(request) {
                         week: extractWeekNumber(project.name),
                         fromCache: true,
                         calculatedAt: cachedScores.rows[0]?.calculated_at,
-                        scores: cachedScores.rows
+                        globalResults,
+                        detailedResults,
+                        scores: cachedScores.rows  // Keep for backward compatibility
                     });
                     continue;
                 }
@@ -269,7 +382,7 @@ export async function POST(request) {
                 if (cached.rows[0].count > 0) {
                     cachedCount++;
 
-                    // 從快取讀取結果
+                    // 從快取讀取 local scores
                     const cachedScores = await sql`
                         SELECT
                             source_data_id,
@@ -283,6 +396,39 @@ export async function POST(request) {
                         ORDER BY source_data_id, task_name
                     `;
 
+                    // 從快取讀取 global alpha
+                    const cachedGlobalAlpha = await sql`
+                        SELECT
+                            task_name,
+                            global_alpha,
+                            data_count,
+                            calculated_at
+                        FROM global_alpha_cache
+                        WHERE project_id = ${round.project_id}
+                            AND round_number = ${round.round_number}
+                        ORDER BY task_name
+                    `;
+
+                    // 重建 globalResults 結構
+                    const globalResults = cachedGlobalAlpha.rows.map(row => ({
+                        task: row.task_name,
+                        globalAlpha: row.global_alpha,
+                        count: row.data_count
+                    }));
+
+                    // 重建 detailedResults 結構
+                    const detailedResultsMap = new Map();
+                    cachedScores.rows.forEach(score => {
+                        if (!detailedResultsMap.has(score.source_data_id)) {
+                            detailedResultsMap.set(score.source_data_id, {
+                                source_data_id: score.source_data_id,
+                                scores: {}
+                            });
+                        }
+                        detailedResultsMap.get(score.source_data_id).scores[score.task_name] = score.local_score;
+                    });
+                    const detailedResults = Array.from(detailedResultsMap.values());
+
                     results.push({
                         projectId: round.project_id,
                         projectName: round.project_name,
@@ -294,7 +440,9 @@ export async function POST(request) {
                         week: extractWeekNumber(round.project_name),
                         fromCache: true,
                         calculatedAt: cachedScores.rows[0]?.calculated_at,
-                        scores: cachedScores.rows
+                        globalResults,
+                        detailedResults,
+                        scores: cachedScores.rows  // Keep for backward compatibility
                     });
                     continue;
                 }
@@ -405,67 +553,104 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
             return { success: false, error: '無標註資料' };
         }
 
-        // 組織資料
-        const dataBySourceId = {};
-        annotations.rows.forEach(row => {
-            if (!dataBySourceId[row.source_data_id]) {
-                dataBySourceId[row.source_data_id] = {
-                    source_data_id: row.source_data_id,
-                    original_data: row.original_data,
-                    annotations: []
-                };
+        // 整理資料結構（與 calculate-agreement 相同）
+        const sourceDataMap = new Map();
+        const annotatorSet = new Set();
+
+        annotations.rows.forEach(ann => {
+            if (!sourceDataMap.has(ann.source_data_id)) {
+                sourceDataMap.set(ann.source_data_id, {
+                    source_data_id: ann.source_data_id,
+                    original_data: ann.original_data,
+                    annotators: {}
+                });
             }
-            dataBySourceId[row.source_data_id].annotations.push(row);
+
+            const userId = ann.user_id;
+            annotatorSet.add(userId);
+
+            sourceDataMap.get(ann.source_data_id).annotators[userId] = {
+                promise_status: ann.promise_status,
+                verification_timeline: ann.verification_timeline,
+                evidence_status: ann.evidence_status,
+                evidence_quality: ann.evidence_quality
+            };
         });
 
-        const detailedResults = [];
-        const globalScores = {};
+        const annotators = Array.from(annotatorSet);
+        const sourceDataList = Array.from(sourceDataMap.values());
 
-        tasks.forEach(task => {
-            globalScores[task] = [];
-        });
+        // 計算各任務的 Global Alpha（使用完整算法）
+        const globalResults = [];
 
-        // 計算每個資料項的局部分數
-        Object.values(dataBySourceId).forEach(item => {
+        for (const task of tasks) {
+            // 建立評分矩陣 (rows=annotators, cols=source_data)
+            // null/undefined 保持為 null (krippendorff 會跳過)
+            const matrix = annotators.map(annotator =>
+                sourceDataList.map(item => {
+                    const val = item.annotators[annotator]?.[task];
+                    return (val === null || val === undefined) ? null : val;
+                })
+            );
+
+            const alpha = calculateKrippendorffsAlpha(matrix);
+
+            globalResults.push({
+                task,
+                globalAlpha: isNaN(alpha) ? null : alpha,
+                count: sourceDataList.length
+            });
+        }
+
+        // 計算每筆資料的 Local Alpha（使用完整算法）
+        const detailedResults = sourceDataList.map(item => {
             const result = {
                 source_data_id: item.source_data_id,
                 original_data: item.original_data,
                 scores: {},
-                annotators: item.annotations.map(a => ({
-                    user_id: a.user_id,
-                    promise_status: a.promise_status,
-                    verification_timeline: a.verification_timeline,
-                    evidence_status: a.evidence_status,
-                    evidence_quality: a.evidence_quality
-                }))
+                annotators: []
             };
 
-            tasks.forEach(task => {
-                const localAlpha = calculateLocalAlpha(item.annotations, task);
-                result.scores[task] = localAlpha;
-                if (localAlpha !== null) {
-                    globalScores[task].push(localAlpha);
+            // 整理標註者資料
+            for (const annotator of annotators) {
+                if (item.annotators[annotator]) {
+                    result.annotators.push({
+                        user_id: annotator,
+                        ...item.annotators[annotator]
+                    });
                 }
-            });
+            }
 
-            detailedResults.push(result);
+            // 計算各任務的 local alpha
+            for (const task of tasks) {
+                // 建立該任務的完整資料矩陣 (用於計算 De)
+                // 將 null 替換成 'N/A',與 calculate-agreement 一致
+                const taskMatrix = annotators.map(annotator =>
+                    sourceDataList.map(dataItem => {
+                        const val = dataItem.annotators[annotator]?.[task];
+                        return (val === null || val === undefined) ? 'N/A' : val;
+                    })
+                );
+
+                // 取得此題目的評分,null 替換成 'N/A'
+                const itemValues = annotators.map(ann => {
+                    const val = item.annotators[ann]?.[task];
+                    return (val === null || val === undefined) ? 'N/A' : val;
+                });
+
+                const localScore = calculateLocalAlpha(itemValues, taskMatrix);
+                result.scores[task] = isNaN(localScore) ? null : localScore;
+            }
+
+            return result;
         });
-
-        // 計算全域分數
-        const globalResults = tasks.map(task => ({
-            task,
-            globalAlpha: globalScores[task].length > 0
-                ? globalScores[task].reduce((a, b) => a + b, 0) / globalScores[task].length
-                : null,
-            count: globalScores[task].length
-        }));
 
         return {
             success: true,
             data: {
                 globalResults,
                 detailedResults,
-                annotatorCount: [...new Set(annotations.rows.map(r => r.user_id))].length
+                annotatorCount: annotators.length
             }
         };
 
@@ -521,67 +706,103 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
             ? ['promise_status', 'verification_timeline']
             : ['evidence_status', 'evidence_quality'];
 
-        // 組織資料（與初次標註相同邏輯）
-        const dataBySourceId = {};
-        annotations.rows.forEach(row => {
-            if (!dataBySourceId[row.source_data_id]) {
-                dataBySourceId[row.source_data_id] = {
-                    source_data_id: row.source_data_id,
-                    original_data: row.original_data,
-                    annotations: []
-                };
+        // 整理資料結構（與 calculate-agreement 相同）
+        const sourceDataMap = new Map();
+        const annotatorSet = new Set();
+
+        annotations.rows.forEach(ann => {
+            if (!sourceDataMap.has(ann.source_data_id)) {
+                sourceDataMap.set(ann.source_data_id, {
+                    source_data_id: ann.source_data_id,
+                    original_data: ann.original_data,
+                    annotators: {}
+                });
             }
-            dataBySourceId[row.source_data_id].annotations.push(row);
+
+            const userId = ann.user_id;
+            annotatorSet.add(userId);
+
+            sourceDataMap.get(ann.source_data_id).annotators[userId] = {
+                promise_status: ann.promise_status,
+                verification_timeline: ann.verification_timeline,
+                evidence_status: ann.evidence_status,
+                evidence_quality: ann.evidence_quality
+            };
         });
 
-        const detailedResults = [];
-        const globalScores = {};
+        const annotators = Array.from(annotatorSet);
+        const sourceDataList = Array.from(sourceDataMap.values());
 
-        tasks.forEach(task => {
-            globalScores[task] = [];
-        });
+        // 計算各任務的 Global Alpha（使用完整算法）
+        const globalResults = [];
 
-        // 計算局部分數
-        Object.values(dataBySourceId).forEach(item => {
+        for (const task of tasks) {
+            // 建立評分矩陣 (rows=annotators, cols=source_data)
+            const matrix = annotators.map(annotator =>
+                sourceDataList.map(item => {
+                    const val = item.annotators[annotator]?.[task];
+                    return (val === null || val === undefined) ? null : val;
+                })
+            );
+
+            const alpha = calculateKrippendorffsAlpha(matrix);
+
+            globalResults.push({
+                task,
+                globalAlpha: isNaN(alpha) ? null : alpha,
+                count: sourceDataList.length
+            });
+        }
+
+        // 計算每筆資料的 Local Alpha（使用完整算法）
+        const detailedResults = sourceDataList.map(item => {
             const result = {
                 source_data_id: item.source_data_id,
                 original_data: item.original_data,
                 scores: {},
-                annotators: item.annotations.map(a => ({
-                    user_id: a.user_id,
-                    promise_status: a.promise_status,
-                    verification_timeline: a.verification_timeline,
-                    evidence_status: a.evidence_status,
-                    evidence_quality: a.evidence_quality
-                }))
+                annotators: []
             };
 
-            tasks.forEach(task => {
-                const localAlpha = calculateLocalAlpha(item.annotations, task);
-                result.scores[task] = localAlpha;
-                if (localAlpha !== null) {
-                    globalScores[task].push(localAlpha);
+            // 整理標註者資料
+            for (const annotator of annotators) {
+                if (item.annotators[annotator]) {
+                    result.annotators.push({
+                        user_id: annotator,
+                        ...item.annotators[annotator]
+                    });
                 }
-            });
+            }
 
-            detailedResults.push(result);
+            // 計算各任務的 local alpha
+            for (const task of tasks) {
+                // 建立該任務的完整資料矩陣 (用於計算 De)
+                // 將 null 替換成 'N/A',與 calculate-agreement 一致
+                const taskMatrix = annotators.map(annotator =>
+                    sourceDataList.map(dataItem => {
+                        const val = dataItem.annotators[annotator]?.[task];
+                        return (val === null || val === undefined) ? 'N/A' : val;
+                    })
+                );
+
+                // 取得此題目的評分,null 替換成 'N/A'
+                const itemValues = annotators.map(ann => {
+                    const val = item.annotators[ann]?.[task];
+                    return (val === null || val === undefined) ? 'N/A' : val;
+                });
+
+                const localScore = calculateLocalAlpha(itemValues, taskMatrix);
+                result.scores[task] = isNaN(localScore) ? null : localScore;
+            }
+
+            return result;
         });
-
-        // 計算全域分數
-        const globalResults = tasks.map(task => ({
-            task,
-            globalAlpha: globalScores[task].length > 0
-                ? globalScores[task].reduce((a, b) => a + b, 0) / globalScores[task].length
-                : null,
-            count: globalScores[task].length
-        }));
 
         return {
             success: true,
             data: {
                 globalResults,
                 detailedResults,
-                annotatorCount: [...new Set(annotations.rows.map(r => r.user_id))].length,
+                annotatorCount: annotators.length,
                 taskGroup
             }
         };
@@ -595,32 +816,61 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
 // 儲存到快取表
 async function saveToCache(projectId, roundNumber, data) {
     try {
-        // 刪除舊的快取
+        // 刪除舊的快取（local scores）
         await sql`
             DELETE FROM agreement_scores_cache
             WHERE project_id = ${projectId} AND round_number = ${roundNumber}
         `;
 
-        // 插入新的快取
+        // 刪除舊的快取（global alpha）
+        await sql`
+            DELETE FROM global_alpha_cache
+            WHERE project_id = ${projectId} AND round_number = ${roundNumber}
+        `;
+
+        // 插入新的 local scores
         for (const item of data.detailedResults) {
             for (const [taskName, localScore] of Object.entries(item.scores)) {
-                if (localScore !== null) {
-                    await sql`
-                        INSERT INTO agreement_scores_cache (
-                            project_id, source_data_id, round_number, task_name,
-                            local_score, annotators_count, calculated_at
-                        ) VALUES (
-                            ${projectId}, ${item.source_data_id}, ${roundNumber}, ${taskName},
-                            ${localScore}, ${data.annotatorCount}, NOW()
-                        )
-                        ON CONFLICT (project_id, source_data_id, round_number, task_name)
-                        DO UPDATE SET
-                            local_score = ${localScore},
-                            annotators_count = ${data.annotatorCount},
-                            calculated_at = NOW()
-                    `;
-                }
+                // 處理 NaN 和 null：都轉換為 null 儲存
+                const scoreToSave = (localScore === null || isNaN(localScore)) ? null : localScore;
+
+                await sql`
+                    INSERT INTO agreement_scores_cache (
+                        project_id, source_data_id, round_number, task_name,
+                        local_score, annotators_count, calculated_at
+                    ) VALUES (
+                        ${projectId}, ${item.source_data_id}, ${roundNumber}, ${taskName},
+                        ${scoreToSave}, ${data.annotatorCount}, NOW()
+                    )
+                    ON CONFLICT (project_id, source_data_id, round_number, task_name)
+                    DO UPDATE SET
+                        local_score = ${scoreToSave},
+                        annotators_count = ${data.annotatorCount},
+                        calculated_at = NOW()
+                `;
             }
+        }
+
+        // 插入新的 global alpha values
+        for (const globalResult of data.globalResults) {
+            const alphaToSave = (globalResult.globalAlpha === null || isNaN(globalResult.globalAlpha))
+                ? null
+                : globalResult.globalAlpha;
+
+            await sql`
+                INSERT INTO global_alpha_cache (
+                    project_id, round_number, task_name,
+                    global_alpha, data_count, calculated_at
+                ) VALUES (
+                    ${projectId}, ${roundNumber}, ${globalResult.task},
+                    ${alphaToSave}, ${globalResult.count}, NOW()
+                )
+                ON CONFLICT (project_id, round_number, task_name)
+                DO UPDATE SET
+                    global_alpha = ${alphaToSave},
+                    data_count = ${globalResult.count},
+                    calculated_at = NOW()
+            `;
         }
 
         return true;

@@ -53,12 +53,37 @@ export default function ConsistencyDashboard() {
                 router.push('/');
             } else {
                 setUser(parsedUser);
+                // 自動載入快取的分析結果
+                loadCachedResults(parsedUser.id);
             }
         } else {
             alert('請先登入');
             router.push('/');
         }
     }, [router]);
+
+    // 載入快取的分析結果
+    const loadCachedResults = async (userId) => {
+        setLoading(true);
+        try {
+            const response = await fetch('/api/batch-calculate-agreement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, force: false })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data.results.length > 0) {
+                setAllData(result.data.results);
+                setStats(result.data.summary);
+            }
+        } catch (error) {
+            console.error('載入快取失敗:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // 執行批次分析
     const handleBatchAnalysis = async (force = false) => {
@@ -207,7 +232,7 @@ export default function ConsistencyDashboard() {
                     // 加入各標註者的答案
                     if (detail.annotators) {
                         detail.annotators.forEach((ann, idx) => {
-                            row[`標註者${idx + 1}_名稱`] = ann.user_name;
+                            row[`標註者${idx + 1}_ID`] = ann.user_id;
                             row[`標註者${idx + 1}_承諾狀態`] = ann.promise_status || '';
                             row[`標註者${idx + 1}_驗證時間`] = ann.verification_timeline || '';
                             row[`標註者${idx + 1}_證據狀態`] = ann.evidence_status || '';
@@ -287,7 +312,89 @@ export default function ConsistencyDashboard() {
     const filteredData = getFilteredData();
     const globalAverages = calculateGlobalAverage(filteredData);
 
+    // 展開狀態和分頁
+    const [expandedRows, setExpandedRows] = useState({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 5;
+
+    const toggleRow = (id) => {
+        setExpandedRows(prev => ({
+            ...prev,
+            [id]: !prev[id]
+        }));
+    };
+
+    // 取得詳細資料清單（扁平化，每筆資料獨立）
+    const getDetailedList = () => {
+        const detailsList = [];
+
+        filteredData.forEach(item => {
+            if (item.detailedResults) {
+                item.detailedResults.forEach(detail => {
+                    detailsList.push({
+                        ...detail,
+                        groupName: item.groupName,
+                        projectName: item.projectName,
+                        week: item.week,
+                        roundType: item.roundType,
+                        roundNumber: item.roundNumber,
+                        taskGroup: item.taskGroup
+                    });
+                });
+            } else if (item.scores) {
+                // 從 scores 重組資料
+                const scoresBySource = {};
+                item.scores.forEach(score => {
+                    if (!scoresBySource[score.source_data_id]) {
+                        scoresBySource[score.source_data_id] = {
+                            source_data_id: score.source_data_id,
+                            scores: {},
+                            annotators: [],
+                            groupName: item.groupName,
+                            projectName: item.projectName,
+                            week: item.week,
+                            roundType: item.roundType,
+                            roundNumber: item.roundNumber,
+                            taskGroup: item.taskGroup
+                        };
+                    }
+                    scoresBySource[score.source_data_id].scores[score.task_name] = score.local_score;
+                });
+                detailsList.push(...Object.values(scoresBySource));
+            }
+        });
+
+        return detailsList;
+    };
+
+    // 計算平均分數
+    const calculateAvgScore = (scores) => {
+        const scoreValues = Object.values(scores).filter(s => s !== null && s !== undefined);
+        return scoreValues.length > 0
+            ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
+            : null;
+    };
+
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
+
+    if (loading) {
+        return (
+            <div className="container" style={{
+                maxWidth: '1600px',
+                margin: '0 auto',
+                padding: '20px',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                minHeight: '100vh'
+            }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '20px' }}>⏳</div>
+                    <h2>載入分析結果中...</h2>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="container" style={{
@@ -455,6 +562,53 @@ export default function ConsistencyDashboard() {
                 </div>
             </div>
 
+            {/* 資料篩選 */}
+            {allData.length > 0 && (
+                <div className="panel">
+                    <h2 style={{ marginBottom: '20px' }}>資料篩選</h2>
+                    <div className="filter-bar">
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>組別</label>
+                            <select
+                                value={filters.group}
+                                onChange={(e) => setFilters({ ...filters, group: e.target.value })}
+                            >
+                                <option value="all">全部組別</option>
+                                {getAllGroups().map(group => (
+                                    <option key={group} value={group}>{group}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>標註類型</label>
+                            <select
+                                value={filters.roundType}
+                                onChange={(e) => setFilters({ ...filters, roundType: e.target.value })}
+                            >
+                                <option value="all">全部類型</option>
+                                <option value="initial">初次標註</option>
+                                <option value="reannotation">重標註</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>週次</label>
+                            <select
+                                value={filters.week}
+                                onChange={(e) => setFilters({ ...filters, week: e.target.value })}
+                            >
+                                <option value="all">全部週次</option>
+                                {getAllWeeks().map(week => (
+                                    <option key={week} value={week}>第 {week} 週</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <p style={{ marginTop: '15px', color: theme.textSecondary, fontSize: '14px' }}>
+                        顯示 {filteredData.length} / {allData.length} 筆資料
+                    </p>
+                </div>
+            )}
+
             {/* 控制面板 */}
             <div className="panel">
                 <h2 style={{ marginBottom: '20px' }}>批次分析控制</h2>
@@ -512,53 +666,6 @@ export default function ConsistencyDashboard() {
                             <div className="stat-value" style={{ color: theme.warning }}>{stats.fromCache}</div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* 篩選器 */}
-            {allData.length > 0 && (
-                <div className="panel">
-                    <h2 style={{ marginBottom: '20px' }}>資料篩選</h2>
-                    <div className="filter-bar">
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>組別</label>
-                            <select
-                                value={filters.group}
-                                onChange={(e) => setFilters({ ...filters, group: e.target.value })}
-                            >
-                                <option value="all">全部組別</option>
-                                {getAllGroups().map(group => (
-                                    <option key={group} value={group}>{group}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>標註類型</label>
-                            <select
-                                value={filters.roundType}
-                                onChange={(e) => setFilters({ ...filters, roundType: e.target.value })}
-                            >
-                                <option value="all">全部類型</option>
-                                <option value="initial">初次標註</option>
-                                <option value="reannotation">重標註</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>週次</label>
-                            <select
-                                value={filters.week}
-                                onChange={(e) => setFilters({ ...filters, week: e.target.value })}
-                            >
-                                <option value="all">全部週次</option>
-                                {getAllWeeks().map(week => (
-                                    <option key={week} value={week}>第 {week} 週</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <p style={{ marginTop: '15px', color: theme.textSecondary, fontSize: '14px' }}>
-                        顯示 {filteredData.length} / {allData.length} 筆資料
-                    </p>
                 </div>
             )}
 
@@ -669,6 +776,248 @@ export default function ConsistencyDashboard() {
                     </p>
                 </div>
             )}
+
+            {/* 詳細標註資料清單 */}
+            {filteredData.length > 0 && (() => {
+                const allDetails = getDetailedList();
+                const totalItems = allDetails.length;
+                const totalPages = Math.ceil(totalItems / itemsPerPage);
+                const startIndex = (currentPage - 1) * itemsPerPage;
+                const endIndex = startIndex + itemsPerPage;
+                const currentItems = allDetails.slice(startIndex, endIndex);
+
+                return (
+                    <div className="panel">
+                        <h2 style={{ marginBottom: '20px' }}>📋 詳細標註資料清單</h2>
+                        <p style={{ marginBottom: '20px', color: theme.textSecondary }}>
+                            點擊案例可展開查看詳細資訊 - 共 {totalItems} 筆資料
+                        </p>
+
+                        {currentItems.map((detail, idx) => {
+                            const caseNumber = startIndex + idx + 1;
+                            const detailId = `case_${caseNumber}`;
+                            const isExpanded = expandedRows[detailId];
+                            const scores = detail.scores || {};
+                            const avgScore = calculateAvgScore(scores);
+
+                            return (
+                                <div key={detailId} style={{
+                                    background: theme.bgPanel,
+                                    border: `1px solid ${theme.border}`,
+                                    borderRadius: '12px',
+                                    marginBottom: '20px',
+                                    overflow: 'hidden'
+                                }}>
+                                    {/* 標題區 */}
+                                    <div
+                                        style={{
+                                            padding: '20px',
+                                            cursor: 'pointer',
+                                            background: isExpanded ? theme.borderLight : 'transparent'
+                                        }}
+                                        onClick={() => toggleRow(detailId)}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
+                                                案例 #{caseNumber}
+                                            </h3>
+                                            <button style={{
+                                                background: theme.warning,
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '6px 12px',
+                                                borderRadius: '6px',
+                                                fontSize: '12px',
+                                                fontWeight: 600,
+                                                cursor: 'pointer'
+                                            }}>
+                                                ⚠️ 存在爭議
+                                            </button>
+                                        </div>
+
+                                        {/* 原始文本 */}
+                                        {detail.original_data && (
+                                            <div style={{
+                                                background: '#f8f9fa',
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                marginBottom: '15px',
+                                                borderLeft: `4px solid ${theme.primary}`
+                                            }}>
+                                                <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6', color: theme.text }}>
+                                                    {detail.original_data}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* 分數卡片 */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+                                            <div style={{
+                                                background: theme.borderLight,
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '8px' }}>
+                                                    承諾狀態
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '24px',
+                                                    fontWeight: 'bold',
+                                                    color: scores.promise_status >= 0.8 ? theme.success : scores.promise_status >= 0.5 ? theme.warning : theme.danger
+                                                }}>
+                                                    {scores.promise_status?.toFixed(2) || 'N/A'}
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                background: theme.borderLight,
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '8px' }}>
+                                                    驗證時間
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '24px',
+                                                    fontWeight: 'bold',
+                                                    color: scores.verification_timeline >= 0.8 ? theme.success : scores.verification_timeline >= 0.5 ? theme.warning : theme.danger
+                                                }}>
+                                                    {scores.verification_timeline?.toFixed(2) || 'N/A'}
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                background: theme.borderLight,
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '8px' }}>
+                                                    證據狀態
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '24px',
+                                                    fontWeight: 'bold',
+                                                    color: scores.evidence_status >= 0.8 ? theme.success : scores.evidence_status >= 0.5 ? theme.warning : theme.danger
+                                                }}>
+                                                    {scores.evidence_status?.toFixed(2) || 'N/A'}
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                background: theme.borderLight,
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ fontSize: '12px', color: theme.textSecondary, marginBottom: '8px' }}>
+                                                    證據品質
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '24px',
+                                                    fontWeight: 'bold',
+                                                    color: scores.evidence_quality >= 0.8 ? theme.success : scores.evidence_quality >= 0.5 ? theme.warning : theme.danger
+                                                }}>
+                                                    {scores.evidence_quality?.toFixed(2) || 'N/A'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 展開按鈕提示 */}
+                                        <div style={{ textAlign: 'center', color: theme.textSecondary, fontSize: '13px' }}>
+                                            {isExpanded ? '▲ 點擊收合' : '▼ 點擊展開查看標註者比較'}
+                                        </div>
+                                    </div>
+
+                                    {/* 展開內容：標註者比較 */}
+                                    {isExpanded && detail.annotators && detail.annotators.length > 0 && (
+                                        <div style={{ padding: '20px', background: theme.borderLight, borderTop: `1px solid ${theme.border}` }}>
+                                            <h4 style={{ marginBottom: '20px', fontSize: '16px', fontWeight: 600 }}>標註者比較</h4>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                                                {detail.annotators.map((annotator, annIdx) => (
+                                                    <div key={annIdx} style={{
+                                                        background: theme.bgPanel,
+                                                        padding: '20px',
+                                                        borderRadius: '12px',
+                                                        border: `2px solid ${theme.border}`
+                                                    }}>
+                                                        <div style={{
+                                                            marginBottom: '15px',
+                                                            fontWeight: 700,
+                                                            fontSize: '16px',
+                                                            color: theme.primary,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px'
+                                                        }}>
+                                                            <span style={{ fontSize: '20px' }}>👤</span>
+                                                            {annotator.username || annotator.user_id}
+                                                        </div>
+                                                        <div style={{ fontSize: '14px', lineHeight: '2' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <strong>承諾:</strong>
+                                                                <span>{annotator.promise_status || 'N/A'}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <strong>時間:</strong>
+                                                                <span>{annotator.verification_timeline || 'N/A'}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <strong>證據:</strong>
+                                                                <span>{annotator.evidence_status || 'N/A'}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <strong>品質:</strong>
+                                                                <span>{annotator.evidence_quality || 'N/A'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {/* 分頁控制 */}
+                        {totalPages > 1 && (
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                gap: '10px',
+                                marginTop: '30px',
+                                paddingTop: '20px',
+                                borderTop: `1px solid ${theme.border}`
+                            }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                    disabled={currentPage === 1}
+                                    style={{ opacity: currentPage === 1 ? 0.5 : 1 }}
+                                >
+                                    ← 上一頁
+                                </button>
+                                <span style={{ fontSize: '14px', color: theme.text }}>
+                                    第 {currentPage} / {totalPages} 頁
+                                    <span style={{ color: theme.textSecondary, marginLeft: '10px' }}>
+                                        (顯示 {startIndex + 1}-{Math.min(endIndex, totalItems)} 筆)
+                                    </span>
+                                </span>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                    disabled={currentPage === totalPages}
+                                    style={{ opacity: currentPage === totalPages ? 0.5 : 1 }}
+                                >
+                                    下一頁 →
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
         </div>
     );
 }
