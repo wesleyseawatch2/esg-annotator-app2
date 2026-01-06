@@ -238,61 +238,24 @@ export async function POST(request) {
             ORDER BY pg.name, p.name
         `;
 
-        // 2. 取得所有重標註輪次（分別統計 group1 和 group2）
+        // 2. 取得所有重標註輪次（從 reannotation_rounds 和 reannotation_tasks）
         const reannotationRounds = await sql`
-            WITH round_groups AS (
-                SELECT
-                    p.id as project_id,
-                    p.name as project_name,
-                    p.group_id,
-                    pg.name as group_name,
-                    a.reannotation_round as round_number,
-                    'group1' as task_group,
-                    COUNT(DISTINCT CASE
-                        WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL
-                        THEN a.user_id
-                    END) as users_completed
-                FROM annotations a
-                JOIN source_data sd ON a.source_data_id = sd.id
-                JOIN projects p ON sd.project_id = p.id
-                LEFT JOIN project_groups pg ON p.group_id = pg.id
-                WHERE a.reannotation_round > 0
-                    AND a.status = 'completed'
-                    AND (a.skipped IS NULL OR a.skipped = FALSE)
-                GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
-                HAVING COUNT(DISTINCT CASE
-                    WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL
-                    THEN a.user_id
-                END) >= 3
-
-                UNION ALL
-
-                SELECT
-                    p.id as project_id,
-                    p.name as project_name,
-                    p.group_id,
-                    pg.name as group_name,
-                    a.reannotation_round as round_number,
-                    'group2' as task_group,
-                    COUNT(DISTINCT CASE
-                        WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL
-                        THEN a.user_id
-                    END) as users_completed
-                FROM annotations a
-                JOIN source_data sd ON a.source_data_id = sd.id
-                JOIN projects p ON sd.project_id = p.id
-                LEFT JOIN project_groups pg ON p.group_id = pg.id
-                WHERE a.reannotation_round > 0
-                    AND a.status = 'completed'
-                    AND (a.skipped IS NULL OR a.skipped = FALSE)
-                GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
-                HAVING COUNT(DISTINCT CASE
-                    WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL
-                    THEN a.user_id
-                END) >= 3
-            )
-            SELECT * FROM round_groups
-            ORDER BY group_name, project_name, round_number, task_group
+            SELECT
+                rr.project_id,
+                p.name as project_name,
+                p.group_id,
+                pg.name as group_name,
+                rr.round_number,
+                rr.task_group,
+                COUNT(DISTINCT rt.user_id) as users_completed
+            FROM reannotation_rounds rr
+            JOIN projects p ON rr.project_id = p.id
+            LEFT JOIN project_groups pg ON p.group_id = pg.id
+            JOIN reannotation_tasks rt ON rt.round_id = rr.id
+            WHERE rt.status IN ('submitted', 'skipped')
+            GROUP BY rr.id, rr.project_id, p.name, p.group_id, pg.name, rr.round_number, rr.task_group
+            HAVING COUNT(DISTINCT rt.user_id) >= 3
+            ORDER BY pg.name, p.name, rr.round_number, rr.task_group
         `;
 
         const results = [];
@@ -370,12 +333,15 @@ export async function POST(request) {
                                 a.promise_status,
                                 a.verification_timeline,
                                 a.evidence_status,
-                                a.evidence_quality
+                                a.evidence_quality,
+                                a.persist_answer,
+                                a.reannotation_comment
                             FROM source_data sd
                             JOIN (
                                 SELECT DISTINCT ON (source_data_id, user_id)
                                     source_data_id, user_id, promise_status,
                                     verification_timeline, evidence_status, evidence_quality,
+                                    persist_answer, reannotation_comment,
                                     version, created_at
                                 FROM annotations
                                 WHERE source_data_id = ANY(${sourceDataIds})
@@ -397,7 +363,9 @@ export async function POST(request) {
                                     promise_status: row.promise_status,
                                     verification_timeline: row.verification_timeline,
                                     evidence_status: row.evidence_status,
-                                    evidence_quality: row.evidence_quality
+                                    evidence_quality: row.evidence_quality,
+                                    persist_answer: row.persist_answer,
+                                    reannotation_comment: row.reannotation_comment
                                 });
                             }
                         });
@@ -546,7 +514,9 @@ export async function POST(request) {
                                     promise_status: row.promise_status,
                                     verification_timeline: row.verification_timeline,
                                     evidence_status: row.evidence_status,
-                                    evidence_quality: row.evidence_quality
+                                    evidence_quality: row.evidence_quality,
+                                    persist_answer: row.persist_answer,
+                                    reannotation_comment: row.reannotation_comment
                                 });
                             }
                         });
@@ -869,6 +839,8 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
                 latest.verification_timeline,
                 latest.evidence_status,
                 latest.evidence_quality,
+                latest.persist_answer,
+                latest.reannotation_comment,
                 sd.original_data
             FROM (
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
@@ -878,6 +850,8 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
                     a.verification_timeline,
                     a.evidence_status,
                     a.evidence_quality,
+                    a.persist_answer,
+                    a.reannotation_comment,
                     a.status,
                     a.skipped,
                     a.version,
