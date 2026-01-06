@@ -612,36 +612,29 @@ export async function getAllReannotationProgress() {
         p.name as project_name,
         p.group_id,
         pg.name as group_name,
-        ra.round_number,
-        ra.task_group,
+        rr.round_number,
+        rr.task_group,
         (
-          SELECT COUNT(DISTINCT sd.id)
-          FROM source_data sd
-          JOIN reannotation_assignments raa ON sd.id = raa.source_data_id
-          WHERE raa.project_id = p.id
-            AND raa.round_number = ra.round_number
-            AND raa.user_id = u.id
-            AND raa.task_group = ra.task_group
+          SELECT COUNT(DISTINCT rt.source_data_id)
+          FROM reannotation_tasks rt
+          WHERE rt.round_id = rr.id
+            AND rt.user_id = u.id
         ) as total_tasks,
         (
-          SELECT COUNT(DISTINCT a.source_data_id)
-          FROM annotations a
-          JOIN reannotation_assignments raa ON a.source_data_id = raa.source_data_id
-          WHERE a.user_id = u.id
-            AND a.reannotation_round = ra.round_number
-            AND a.status = 'completed'
-            AND (a.skipped IS NULL OR a.skipped = FALSE)
-            AND raa.project_id = p.id
-            AND raa.task_group = ra.task_group
+          SELECT COUNT(DISTINCT rt.source_data_id)
+          FROM reannotation_tasks rt
+          WHERE rt.round_id = rr.id
+            AND rt.user_id = u.id
+            AND rt.status IN ('submitted', 'skipped')
         ) as completed_tasks
-      FROM (
-        SELECT DISTINCT project_id, round_number, task_group, user_id
-        FROM reannotation_assignments
-      ) ra
-      JOIN projects p ON ra.project_id = p.id
-      JOIN users u ON ra.user_id = u.id
+      FROM reannotation_rounds rr
+      JOIN projects p ON rr.project_id = p.id
+      JOIN reannotation_tasks rt ON rt.round_id = rr.id
+      JOIN users u ON rt.user_id = u.id
       LEFT JOIN project_groups pg ON p.group_id = pg.id
-      ORDER BY pg.name, p.name, ra.round_number, ra.task_group, u.username;
+      GROUP BY u.id, u.username, u.role, p.id, p.name, p.group_id,
+               pg.name, rr.id, rr.round_number, rr.task_group
+      ORDER BY pg.name, p.name, rr.round_number, rr.task_group, u.username;
     `;
     return { success: true, data: rows };
   } catch (error) {
