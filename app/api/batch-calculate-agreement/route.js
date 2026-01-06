@@ -238,30 +238,61 @@ export async function POST(request) {
             ORDER BY pg.name, p.name
         `;
 
-        // 2. 取得所有重標註輪次（基於實際標註資料，而非任務分配表）
+        // 2. 取得所有重標註輪次（分別統計 group1 和 group2）
         const reannotationRounds = await sql`
-            SELECT DISTINCT
-                p.id as project_id,
-                p.name as project_name,
-                p.group_id,
-                pg.name as group_name,
-                a.reannotation_round as round_number,
-                CASE
-                    WHEN COUNT(DISTINCT CASE WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL THEN a.user_id END) >= 3 THEN 'group1'
-                    WHEN COUNT(DISTINCT CASE WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL THEN a.user_id END) >= 3 THEN 'group2'
-                    ELSE 'group1'
-                END as task_group,
-                COUNT(DISTINCT a.user_id) as users_completed
-            FROM annotations a
-            JOIN source_data sd ON a.source_data_id = sd.id
-            JOIN projects p ON sd.project_id = p.id
-            LEFT JOIN project_groups pg ON p.group_id = pg.id
-            WHERE a.reannotation_round > 0
-                AND a.status = 'completed'
-                AND (a.skipped IS NULL OR a.skipped = FALSE)
-            GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
-            HAVING COUNT(DISTINCT a.user_id) >= 3
-            ORDER BY pg.name, p.name, a.reannotation_round
+            WITH round_groups AS (
+                SELECT
+                    p.id as project_id,
+                    p.name as project_name,
+                    p.group_id,
+                    pg.name as group_name,
+                    a.reannotation_round as round_number,
+                    'group1' as task_group,
+                    COUNT(DISTINCT CASE
+                        WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL
+                        THEN a.user_id
+                    END) as users_completed
+                FROM annotations a
+                JOIN source_data sd ON a.source_data_id = sd.id
+                JOIN projects p ON sd.project_id = p.id
+                LEFT JOIN project_groups pg ON p.group_id = pg.id
+                WHERE a.reannotation_round > 0
+                    AND a.status = 'completed'
+                    AND (a.skipped IS NULL OR a.skipped = FALSE)
+                GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
+                HAVING COUNT(DISTINCT CASE
+                    WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL
+                    THEN a.user_id
+                END) >= 3
+
+                UNION ALL
+
+                SELECT
+                    p.id as project_id,
+                    p.name as project_name,
+                    p.group_id,
+                    pg.name as group_name,
+                    a.reannotation_round as round_number,
+                    'group2' as task_group,
+                    COUNT(DISTINCT CASE
+                        WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL
+                        THEN a.user_id
+                    END) as users_completed
+                FROM annotations a
+                JOIN source_data sd ON a.source_data_id = sd.id
+                JOIN projects p ON sd.project_id = p.id
+                LEFT JOIN project_groups pg ON p.group_id = pg.id
+                WHERE a.reannotation_round > 0
+                    AND a.status = 'completed'
+                    AND (a.skipped IS NULL OR a.skipped = FALSE)
+                GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
+                HAVING COUNT(DISTINCT CASE
+                    WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL
+                    THEN a.user_id
+                END) >= 3
+            )
+            SELECT * FROM round_groups
+            ORDER BY group_name, project_name, round_number, task_group
         `;
 
         const results = [];
@@ -679,6 +710,8 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
                 latest.verification_timeline,
                 latest.evidence_status,
                 latest.evidence_quality,
+                latest.persist_answer,
+                latest.reannotation_comment,
                 sd.original_data
             FROM (
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
@@ -688,6 +721,8 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
                     a.verification_timeline,
                     a.evidence_status,
                     a.evidence_quality,
+                    a.persist_answer,
+                    a.reannotation_comment,
                     a.status,
                     a.skipped,
                     a.version,
@@ -728,7 +763,9 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
                 promise_status: ann.promise_status,
                 verification_timeline: ann.verification_timeline,
                 evidence_status: ann.evidence_status,
-                evidence_quality: ann.evidence_quality
+                evidence_quality: ann.evidence_quality,
+                persist_answer: ann.persist_answer,
+                reannotation_comment: ann.reannotation_comment
             };
         });
 
@@ -886,7 +923,9 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
                 promise_status: ann.promise_status,
                 verification_timeline: ann.verification_timeline,
                 evidence_status: ann.evidence_status,
-                evidence_quality: ann.evidence_quality
+                evidence_quality: ann.evidence_quality,
+                persist_answer: ann.persist_answer,
+                reannotation_comment: ann.reannotation_comment
             };
         });
 

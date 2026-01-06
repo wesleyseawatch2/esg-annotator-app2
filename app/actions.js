@@ -602,8 +602,24 @@ export async function getAllUsersProgress() {
 
 export async function getAllReannotationProgress() {
   try {
-    // 查詢所有重標註任務的進度
+    // 查詢所有重標註任務的進度（基於實際標註資料）
     const { rows } = await sql`
+      WITH user_round_tasks AS (
+        SELECT DISTINCT
+          a.user_id,
+          sd.project_id,
+          a.reannotation_round as round_number,
+          CASE
+            WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL THEN 'group1'
+            WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL THEN 'group2'
+          END as task_group,
+          a.source_data_id,
+          a.status,
+          a.skipped
+        FROM annotations a
+        JOIN source_data sd ON a.source_data_id = sd.id
+        WHERE a.reannotation_round > 0
+      )
       SELECT
         u.id as user_id,
         u.username,
@@ -612,29 +628,21 @@ export async function getAllReannotationProgress() {
         p.name as project_name,
         p.group_id,
         pg.name as group_name,
-        rr.round_number,
-        rr.task_group,
-        (
-          SELECT COUNT(DISTINCT rt.source_data_id)
-          FROM reannotation_tasks rt
-          WHERE rt.round_id = rr.id
-            AND rt.user_id = u.id
-        ) as total_tasks,
-        (
-          SELECT COUNT(DISTINCT rt.source_data_id)
-          FROM reannotation_tasks rt
-          WHERE rt.round_id = rr.id
-            AND rt.user_id = u.id
-            AND rt.status IN ('submitted', 'skipped')
-        ) as completed_tasks
-      FROM reannotation_rounds rr
-      JOIN projects p ON rr.project_id = p.id
-      JOIN reannotation_tasks rt ON rt.round_id = rr.id
-      JOIN users u ON rt.user_id = u.id
+        urt.round_number,
+        urt.task_group,
+        COUNT(DISTINCT urt.source_data_id) as total_tasks,
+        COUNT(DISTINCT CASE
+          WHEN urt.status = 'completed' AND (urt.skipped IS NULL OR urt.skipped = FALSE)
+          THEN urt.source_data_id
+        END) as completed_tasks
+      FROM user_round_tasks urt
+      JOIN users u ON urt.user_id = u.id
+      JOIN projects p ON urt.project_id = p.id
       LEFT JOIN project_groups pg ON p.group_id = pg.id
+      WHERE urt.task_group IS NOT NULL
       GROUP BY u.id, u.username, u.role, p.id, p.name, p.group_id,
-               pg.name, rr.id, rr.round_number, rr.task_group
-      ORDER BY pg.name, p.name, rr.round_number, rr.task_group, u.username;
+               pg.name, urt.round_number, urt.task_group
+      ORDER BY pg.name, p.name, urt.round_number, urt.task_group, u.username;
     `;
     return { success: true, data: rows };
   } catch (error) {
