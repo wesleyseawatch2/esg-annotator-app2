@@ -238,26 +238,30 @@ export async function POST(request) {
             ORDER BY pg.name, p.name
         `;
 
-        // 2. 取得所有重標註輪次
+        // 2. 取得所有重標註輪次（基於實際標註資料，而非任務分配表）
         const reannotationRounds = await sql`
-            SELECT
-                rr.id as round_id,
-                rr.project_id,
-                rr.round_number,
-                rr.task_group,
+            SELECT DISTINCT
+                p.id as project_id,
                 p.name as project_name,
                 p.group_id,
                 pg.name as group_name,
-                COUNT(DISTINCT rt.user_id) as users_completed
-            FROM reannotation_rounds rr
-            JOIN projects p ON rr.project_id = p.id
+                a.reannotation_round as round_number,
+                CASE
+                    WHEN COUNT(DISTINCT CASE WHEN a.promise_status IS NOT NULL OR a.verification_timeline IS NOT NULL THEN a.user_id END) >= 3 THEN 'group1'
+                    WHEN COUNT(DISTINCT CASE WHEN a.evidence_status IS NOT NULL OR a.evidence_quality IS NOT NULL THEN a.user_id END) >= 3 THEN 'group2'
+                    ELSE 'group1'
+                END as task_group,
+                COUNT(DISTINCT a.user_id) as users_completed
+            FROM annotations a
+            JOIN source_data sd ON a.source_data_id = sd.id
+            JOIN projects p ON sd.project_id = p.id
             LEFT JOIN project_groups pg ON p.group_id = pg.id
-            JOIN reannotation_tasks rt ON rt.round_id = rr.id
-            WHERE rr.status = 'completed'
-                AND rt.status = 'submitted'
-            GROUP BY rr.id, rr.project_id, rr.round_number, rr.task_group, p.name, p.group_id, pg.name
-            HAVING COUNT(DISTINCT rt.user_id) >= 2
-            ORDER BY pg.name, p.name, rr.round_number
+            WHERE a.reannotation_round > 0
+                AND a.status = 'completed'
+                AND (a.skipped IS NULL OR a.skipped = FALSE)
+            GROUP BY p.id, p.name, p.group_id, pg.name, a.reannotation_round
+            HAVING COUNT(DISTINCT a.user_id) >= 3
+            ORDER BY pg.name, p.name, a.reannotation_round
         `;
 
         const results = [];
