@@ -827,22 +827,13 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
     }
 }
 
-// 計算重標註一致性
+// 計算重標註一致性（混合重標註資料和原始資料）
 async function calculateReannotationAgreement(projectId, roundNumber, taskGroup) {
     try {
-        // 取得該輪次的重標註資料（使用最新版本）
+        // 取得該輪次的重標註資料 + 沒被重標的原始資料
         const annotations = await sql`
-            SELECT
-                latest.source_data_id,
-                latest.user_id,
-                latest.promise_status,
-                latest.verification_timeline,
-                latest.evidence_status,
-                latest.evidence_quality,
-                latest.persist_answer,
-                latest.reannotation_comment,
-                sd.original_data
-            FROM (
+            WITH reannotated_data AS (
+                -- 重標註的資料（使用最新版本）
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
                     a.source_data_id,
                     a.user_id,
@@ -852,20 +843,46 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
                     a.evidence_quality,
                     a.persist_answer,
                     a.reannotation_comment,
+                    sd.original_data,
                     a.status,
-                    a.skipped,
-                    a.version,
-                    a.created_at
+                    a.skipped
                 FROM annotations a
                 JOIN source_data sd ON a.source_data_id = sd.id
                 WHERE sd.project_id = ${projectId}
                     AND a.reannotation_round = ${roundNumber}
                 ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
-            ) latest
-            JOIN source_data sd ON latest.source_data_id = sd.id
-            WHERE latest.status = 'completed'
-                AND (latest.skipped IS NULL OR latest.skipped = FALSE)
-            ORDER BY latest.source_data_id, latest.user_id
+            ),
+            original_data AS (
+                -- 原始資料（沒被重標註的）
+                SELECT DISTINCT ON (a.source_data_id, a.user_id)
+                    a.source_data_id,
+                    a.user_id,
+                    a.promise_status,
+                    a.verification_timeline,
+                    a.evidence_status,
+                    a.evidence_quality,
+                    a.persist_answer,
+                    a.reannotation_comment,
+                    sd.original_data,
+                    a.status,
+                    a.skipped
+                FROM annotations a
+                JOIN source_data sd ON a.source_data_id = sd.id
+                WHERE sd.project_id = ${projectId}
+                    AND a.reannotation_round = 0
+                    AND a.source_data_id NOT IN (
+                        SELECT DISTINCT source_data_id
+                        FROM reannotated_data
+                    )
+                ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
+            )
+            -- 合併重標註資料和原始資料
+            SELECT * FROM reannotated_data
+            WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
+            UNION ALL
+            SELECT * FROM original_data
+            WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
+            ORDER BY source_data_id, user_id
         `;
 
         if (annotations.rows.length === 0) {
