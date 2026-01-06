@@ -477,9 +477,58 @@ export async function POST(request) {
                     });
 
                     // 補充原始資料和標註者資訊（重標註）
+                    // 需要混合重標註資料和原始資料，確保顯示所有 3 個標註者的答案
                     const sourceDataIds = Array.from(detailedResultsMap.keys());
                     if (sourceDataIds.length > 0) {
                         const sourceDataInfo = await sql`
+                            WITH reannotated_data AS (
+                                -- 重標註的資料（使用最新版本）
+                                SELECT DISTINCT ON (a.source_data_id, a.user_id)
+                                    a.source_data_id,
+                                    a.user_id,
+                                    a.promise_status,
+                                    a.verification_timeline,
+                                    a.evidence_status,
+                                    a.evidence_quality,
+                                    a.persist_answer,
+                                    a.reannotation_comment,
+                                    a.status,
+                                    a.skipped
+                                FROM annotations a
+                                WHERE a.source_data_id = ANY(${sourceDataIds})
+                                    AND a.reannotation_round = ${round.round_number}
+                                ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
+                            ),
+                            original_data AS (
+                                -- 原始資料（沒被重標註的）
+                                SELECT DISTINCT ON (a.source_data_id, a.user_id)
+                                    a.source_data_id,
+                                    a.user_id,
+                                    a.promise_status,
+                                    a.verification_timeline,
+                                    a.evidence_status,
+                                    a.evidence_quality,
+                                    a.persist_answer,
+                                    a.reannotation_comment,
+                                    a.status,
+                                    a.skipped
+                                FROM annotations a
+                                WHERE a.source_data_id = ANY(${sourceDataIds})
+                                    AND a.reannotation_round = 0
+                                    AND a.source_data_id NOT IN (
+                                        SELECT DISTINCT source_data_id
+                                        FROM reannotated_data
+                                    )
+                                ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
+                            ),
+                            merged_annotations AS (
+                                -- 合併重標註資料和原始資料
+                                SELECT * FROM reannotated_data
+                                WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
+                                UNION ALL
+                                SELECT * FROM original_data
+                                WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
+                            )
                             SELECT
                                 sd.id as source_data_id,
                                 sd.original_data,
@@ -487,21 +536,13 @@ export async function POST(request) {
                                 a.promise_status,
                                 a.verification_timeline,
                                 a.evidence_status,
-                                a.evidence_quality
+                                a.evidence_quality,
+                                a.persist_answer,
+                                a.reannotation_comment
                             FROM source_data sd
-                            JOIN (
-                                SELECT DISTINCT ON (source_data_id, user_id)
-                                    source_data_id, user_id, promise_status,
-                                    verification_timeline, evidence_status, evidence_quality,
-                                    version, created_at
-                                FROM annotations
-                                WHERE source_data_id = ANY(${sourceDataIds})
-                                    AND reannotation_round = ${round.round_number}
-                                    AND status = 'completed'
-                                    AND (skipped IS NULL OR skipped = FALSE)
-                                ORDER BY source_data_id, user_id, version DESC, created_at DESC
-                            ) a ON sd.id = a.source_data_id
+                            JOIN merged_annotations a ON sd.id = a.source_data_id
                             WHERE sd.id = ANY(${sourceDataIds})
+                            ORDER BY sd.id, a.user_id
                         `;
 
                         sourceDataInfo.rows.forEach(row => {
