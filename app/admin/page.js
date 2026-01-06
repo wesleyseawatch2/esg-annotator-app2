@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getProjectsWithProgress, getAllUsersProgress } from '../actions';
+import { getProjectsWithProgress, getAllUsersProgress, getAllReannotationProgress } from '../actions';
 import {
     deleteProject, deleteProjectOnly, saveProjectData, updateProjectOffset,
     diagnoseProject, exportProjectAnnotations, batchUploadGroupData,
@@ -23,7 +23,9 @@ export default function AdminPage() {
     const [user, setUser] = useState(null);
     const [projects, setProjects] = useState([]);
     const [allUsersProgress, setAllUsersProgress] = useState([]);
+    const [allReannotationProgress, setAllReannotationProgress] = useState([]);
     const [showProgressView, setShowProgressView] = useState(false);
+    const [progressTab, setProgressTab] = useState('initial'); // 'initial' or 'reannotation'
     const [message, setMessage] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
@@ -114,6 +116,14 @@ export default function AdminPage() {
             setAllUsersProgress(result.data);
         } else {
             alert(`無法載入進度資料: ${result.error}`);
+        }
+
+        // 同時載入重標註進度
+        const reannotationResult = await getAllReannotationProgress();
+        if (reannotationResult.success) {
+            setAllReannotationProgress(reannotationResult.data);
+        } else {
+            console.error(`無法載入重標註進度資料: ${reannotationResult.error}`);
         }
     };
 
@@ -1211,9 +1221,12 @@ export default function AdminPage() {
 
     // 進度視圖 UI
     if (showProgressView) {
+        // 根據當前分頁選擇數據源
+        const currentProgressData = progressTab === 'initial' ? allUsersProgress : allReannotationProgress;
+
         // 整理資料：按群組分組
         const groupsMap = {};
-        allUsersProgress.forEach(row => {
+        currentProgressData.forEach(row => {
             const groupKey = row.group_name || '未分組';
 
             if (!groupsMap[groupKey]) {
@@ -1224,20 +1237,30 @@ export default function AdminPage() {
                 };
             }
 
-            if (!groupsMap[groupKey].projects[row.project_name]) {
-                groupsMap[groupKey].projects[row.project_name] = {
+            // 對於重標註，項目鍵需要包含輪次和任務組
+            let projectKey = row.project_name;
+            if (progressTab === 'reannotation') {
+                const taskGroupLabel = row.task_group === 'group1' ? '組別1' : '組別2';
+                projectKey = `${row.project_name} - 第${row.round_number}輪 - ${taskGroupLabel}`;
+            }
+
+            if (!groupsMap[groupKey].projects[projectKey]) {
+                groupsMap[groupKey].projects[projectKey] = {
                     projectId: row.project_id,
                     projectName: row.project_name,
-                    totalTasks: parseInt(row.total_tasks),
+                    displayName: projectKey,
+                    roundNumber: row.round_number || 0,
+                    taskGroup: row.task_group || null,
+                    totalTasks: parseInt(row.total_tasks) || 0,
                     users: []
                 };
             }
 
-            groupsMap[groupKey].projects[row.project_name].users.push({
+            groupsMap[groupKey].projects[projectKey].users.push({
                 userId: row.user_id,
                 username: row.username,
                 role: row.role,
-                completedTasks: parseInt(row.completed_tasks)
+                completedTasks: parseInt(row.completed_tasks) || 0
             });
         });
 
@@ -1249,7 +1272,7 @@ export default function AdminPage() {
         return (
             <div className="container">
                 <div className="panel" style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                         <h1>📊 組別標註進度</h1>
                         <button
                             className="btn"
@@ -1257,6 +1280,44 @@ export default function AdminPage() {
                             style={{ background: '#6b7280', color: 'white' }}
                         >
                             返回管理頁面
+                        </button>
+                    </div>
+
+                    {/* 分頁按鈕 */}
+                    <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e5e7eb' }}>
+                        <button
+                            onClick={() => setProgressTab('initial')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: progressTab === 'initial' ? '#667eea' : 'transparent',
+                                color: progressTab === 'initial' ? 'white' : '#6b7280',
+                                fontWeight: progressTab === 'initial' ? 'bold' : 'normal',
+                                fontSize: '15px',
+                                cursor: 'pointer',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.3s',
+                                borderBottom: progressTab === 'initial' ? 'none' : '2px solid transparent'
+                            }}
+                        >
+                            📝 初次標註
+                        </button>
+                        <button
+                            onClick={() => setProgressTab('reannotation')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: progressTab === 'reannotation' ? '#667eea' : 'transparent',
+                                color: progressTab === 'reannotation' ? 'white' : '#6b7280',
+                                fontWeight: progressTab === 'reannotation' ? 'bold' : 'normal',
+                                fontSize: '15px',
+                                cursor: 'pointer',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.3s',
+                                borderBottom: progressTab === 'reannotation' ? 'none' : '2px solid transparent'
+                            }}
+                        >
+                            🔄 重標註
                         </button>
                     </div>
                 </div>
@@ -1330,8 +1391,8 @@ export default function AdminPage() {
                                     : 0;
 
                                 return (
-                                    <div key={project.projectId} style={{ marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '8px' }}>
-                                        <h3 style={{ marginBottom: '15px', color: '#374151' }}>📁 {project.projectName}</h3>
+                                    <div key={project.projectId + '-' + (project.roundNumber || 0) + '-' + (project.taskGroup || '')} style={{ marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '8px' }}>
+                                        <h3 style={{ marginBottom: '15px', color: '#374151' }}>📁 {project.displayName || project.projectName}</h3>
                                         <div style={{
                                             background: '#f3f4f6',
                                             padding: '12px',
