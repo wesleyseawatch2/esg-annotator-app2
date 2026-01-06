@@ -731,6 +731,11 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
         const annotators = Array.from(annotatorSet);
         const sourceDataList = Array.from(sourceDataMap.values());
 
+        // 檢查是否至少有 3 個標註者
+        if (annotators.length < 3) {
+            return { success: false, error: `標註者不足：需要至少 3 人，目前只有 ${annotators.length} 人` };
+        }
+
         // 計算各任務的 Global Alpha（使用完整算法）
         const globalResults = [];
 
@@ -883,6 +888,11 @@ async function calculateReannotationAgreement(projectId, roundNumber, taskGroup)
 
         const annotators = Array.from(annotatorSet);
         const sourceDataList = Array.from(sourceDataMap.values());
+
+        // 檢查是否至少有 3 個標註者
+        if (annotators.length < 3) {
+            return { success: false, error: `標註者不足：需要至少 3 人，目前只有 ${annotators.length} 人` };
+        }
 
         // 計算各任務的 Global Alpha（使用完整算法）
         const globalResults = [];
