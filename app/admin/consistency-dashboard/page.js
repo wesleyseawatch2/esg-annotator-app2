@@ -205,10 +205,10 @@ export default function ConsistencyDashboard() {
                         '標註類型': item.roundType === 'initial' ? '初次標註' : `重標註第${item.roundNumber}輪`,
                         '任務組別': item.taskGroup || '全部',
                         '資料ID': sourceData.source_data_id,
-                        '承諾狀態分數': sourceData.scores.promise_status?.toFixed(3) || 'N/A',
-                        '驗證時間分數': sourceData.scores.verification_timeline?.toFixed(3) || 'N/A',
-                        '證據狀態分數': sourceData.scores.evidence_status?.toFixed(3) || 'N/A',
-                        '證據品質分數': sourceData.scores.evidence_quality?.toFixed(3) || 'N/A',
+                        '承諾狀態分數': sourceData.scores.promise_status != null ? Number(sourceData.scores.promise_status).toFixed(3) : 'N/A',
+                        '驗證時間分數': sourceData.scores.verification_timeline != null ? Number(sourceData.scores.verification_timeline).toFixed(3) : 'N/A',
+                        '證據狀態分數': sourceData.scores.evidence_status != null ? Number(sourceData.scores.evidence_status).toFixed(3) : 'N/A',
+                        '證據品質分數': sourceData.scores.evidence_quality != null ? Number(sourceData.scores.evidence_quality).toFixed(3) : 'N/A',
                         '計算時間': item.calculatedAt ? new Date(item.calculatedAt).toLocaleString('zh-TW') : ''
                     });
                 });
@@ -223,16 +223,16 @@ export default function ConsistencyDashboard() {
                         '任務組別': item.taskGroup || '全部',
                         '資料ID': detail.source_data_id,
                         '原始文本': detail.original_data,
-                        '承諾狀態分數': detail.scores.promise_status?.toFixed(3) || 'N/A',
-                        '驗證時間分數': detail.scores.verification_timeline?.toFixed(3) || 'N/A',
-                        '證據狀態分數': detail.scores.evidence_status?.toFixed(3) || 'N/A',
-                        '證據品質分數': detail.scores.evidence_quality?.toFixed(3) || 'N/A'
+                        '承諾狀態分數': detail.scores.promise_status != null ? Number(detail.scores.promise_status).toFixed(3) : 'N/A',
+                        '驗證時間分數': detail.scores.verification_timeline != null ? Number(detail.scores.verification_timeline).toFixed(3) : 'N/A',
+                        '證據狀態分數': detail.scores.evidence_status != null ? Number(detail.scores.evidence_status).toFixed(3) : 'N/A',
+                        '證據品質分數': detail.scores.evidence_quality != null ? Number(detail.scores.evidence_quality).toFixed(3) : 'N/A'
                     };
 
                     // 加入各標註者的答案
                     if (detail.annotators) {
                         detail.annotators.forEach((ann, idx) => {
-                            row[`標註者${idx + 1}_ID`] = ann.user_id;
+                            row[`標註者${idx + 1}`] = ann.username || ann.user_id;
                             row[`標註者${idx + 1}_承諾狀態`] = ann.promise_status || '';
                             row[`標註者${idx + 1}_驗證時間`] = ann.verification_timeline || '';
                             row[`標註者${idx + 1}_證據狀態`] = ann.evidence_status || '';
@@ -289,13 +289,13 @@ export default function ConsistencyDashboard() {
                 if (item.detailedResults) {
                     item.detailedResults.forEach(detail => {
                         if (detail.scores[task] !== null && detail.scores[task] !== undefined) {
-                            scores.push(detail.scores[task]);
+                            scores.push(Number(detail.scores[task]));
                         }
                     });
                 } else if (item.scores) {
                     item.scores.forEach(score => {
-                        if (score.task_name === task && score.local_score !== null) {
-                            scores.push(score.local_score);
+                        if (score.task_name === task && score.local_score !== null && score.local_score !== undefined) {
+                            scores.push(Number(score.local_score));
                         }
                     });
                 }
@@ -369,7 +369,7 @@ export default function ConsistencyDashboard() {
 
     // 計算平均分數
     const calculateAvgScore = (scores) => {
-        const scoreValues = Object.values(scores).filter(s => s !== null && s !== undefined);
+        const scoreValues = Object.values(scores).filter(s => s !== null && s !== undefined).map(s => Number(s));
         return scoreValues.length > 0
             ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
             : null;
@@ -821,18 +821,39 @@ export default function ConsistencyDashboard() {
                                             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
                                                 案例 #{caseNumber}
                                             </h3>
-                                            <button style={{
-                                                background: theme.warning,
-                                                color: 'white',
-                                                border: 'none',
-                                                padding: '6px 12px',
-                                                borderRadius: '6px',
-                                                fontSize: '12px',
-                                                fontWeight: 600,
-                                                cursor: 'pointer'
-                                            }}>
-                                                ⚠️ 存在爭議
-                                            </button>
+                                            {(() => {
+                                                // Check if there's actual disagreement among annotators
+                                                if (!detail.annotators || detail.annotators.length <= 1) {
+                                                    return null; // No dispute if 0 or 1 annotator
+                                                }
+
+                                                const hasDisagreement = ['promise_status', 'verification_timeline', 'evidence_status', 'evidence_quality'].some(task => {
+                                                    const values = detail.annotators
+                                                        .map(ann => ann[task])
+                                                        .filter(v => v !== null && v !== undefined && v !== 'N/A');
+
+                                                    if (values.length <= 1) return false;
+
+                                                    // Check if all values are the same
+                                                    const firstValue = values[0];
+                                                    return !values.every(v => v === firstValue);
+                                                });
+
+                                                return hasDisagreement ? (
+                                                    <button style={{
+                                                        background: theme.warning,
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        padding: '6px 12px',
+                                                        borderRadius: '6px',
+                                                        fontSize: '12px',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer'
+                                                    }}>
+                                                        ⚠️ 存在爭議
+                                                    </button>
+                                                ) : null;
+                                            })()}
                                         </div>
 
                                         {/* 原始文本 */}
@@ -866,7 +887,7 @@ export default function ConsistencyDashboard() {
                                                     fontWeight: 'bold',
                                                     color: scores.promise_status >= 0.8 ? theme.success : scores.promise_status >= 0.5 ? theme.warning : theme.danger
                                                 }}>
-                                                    {scores.promise_status?.toFixed(2) || 'N/A'}
+                                                    {scores.promise_status != null ? Number(scores.promise_status).toFixed(2) : 'N/A'}
                                                 </div>
                                             </div>
                                             <div style={{
@@ -883,7 +904,7 @@ export default function ConsistencyDashboard() {
                                                     fontWeight: 'bold',
                                                     color: scores.verification_timeline >= 0.8 ? theme.success : scores.verification_timeline >= 0.5 ? theme.warning : theme.danger
                                                 }}>
-                                                    {scores.verification_timeline?.toFixed(2) || 'N/A'}
+                                                    {scores.verification_timeline != null ? Number(scores.verification_timeline).toFixed(2) : 'N/A'}
                                                 </div>
                                             </div>
                                             <div style={{
@@ -900,7 +921,7 @@ export default function ConsistencyDashboard() {
                                                     fontWeight: 'bold',
                                                     color: scores.evidence_status >= 0.8 ? theme.success : scores.evidence_status >= 0.5 ? theme.warning : theme.danger
                                                 }}>
-                                                    {scores.evidence_status?.toFixed(2) || 'N/A'}
+                                                    {scores.evidence_status != null ? Number(scores.evidence_status).toFixed(2) : 'N/A'}
                                                 </div>
                                             </div>
                                             <div style={{
@@ -917,7 +938,7 @@ export default function ConsistencyDashboard() {
                                                     fontWeight: 'bold',
                                                     color: scores.evidence_quality >= 0.8 ? theme.success : scores.evidence_quality >= 0.5 ? theme.warning : theme.danger
                                                 }}>
-                                                    {scores.evidence_quality?.toFixed(2) || 'N/A'}
+                                                    {scores.evidence_quality != null ? Number(scores.evidence_quality).toFixed(2) : 'N/A'}
                                                 </div>
                                             </div>
                                         </div>

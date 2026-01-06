@@ -312,7 +312,7 @@ export async function POST(request) {
                         count: row.data_count
                     }));
 
-                    // 重建 detailedResults 結構
+                    // 重建 detailedResults 結構並補充原始資料和標註者資訊
                     const detailedResultsMap = new Map();
                     cachedScores.rows.forEach(score => {
                         if (!detailedResultsMap.has(score.source_data_id)) {
@@ -323,6 +323,51 @@ export async function POST(request) {
                         }
                         detailedResultsMap.get(score.source_data_id).scores[score.task_name] = score.local_score;
                     });
+
+                    // 補充原始資料和標註者資訊
+                    const sourceDataIds = Array.from(detailedResultsMap.keys());
+                    if (sourceDataIds.length > 0) {
+                        const sourceDataInfo = await sql`
+                            SELECT
+                                sd.id as source_data_id,
+                                sd.original_data,
+                                a.user_id,
+                                a.promise_status,
+                                a.verification_timeline,
+                                a.evidence_status,
+                                a.evidence_quality
+                            FROM source_data sd
+                            JOIN (
+                                SELECT DISTINCT ON (source_data_id, user_id)
+                                    source_data_id, user_id, promise_status,
+                                    verification_timeline, evidence_status, evidence_quality,
+                                    version, created_at
+                                FROM annotations
+                                WHERE source_data_id = ANY(${sourceDataIds})
+                                    AND reannotation_round = 0
+                                    AND status = 'completed'
+                                    AND (skipped IS NULL OR skipped = FALSE)
+                                ORDER BY source_data_id, user_id, version DESC, created_at DESC
+                            ) a ON sd.id = a.source_data_id
+                            WHERE sd.id = ANY(${sourceDataIds})
+                        `;
+
+                        sourceDataInfo.rows.forEach(row => {
+                            const detail = detailedResultsMap.get(row.source_data_id);
+                            if (detail) {
+                                detail.original_data = row.original_data;
+                                if (!detail.annotators) detail.annotators = [];
+                                detail.annotators.push({
+                                    user_id: row.user_id,
+                                    promise_status: row.promise_status,
+                                    verification_timeline: row.verification_timeline,
+                                    evidence_status: row.evidence_status,
+                                    evidence_quality: row.evidence_quality
+                                });
+                            }
+                        });
+                    }
+
                     const detailedResults = Array.from(detailedResultsMap.values());
 
                     results.push({
@@ -416,7 +461,7 @@ export async function POST(request) {
                         count: row.data_count
                     }));
 
-                    // 重建 detailedResults 結構
+                    // 重建 detailedResults 結構並補充原始資料和標註者資訊
                     const detailedResultsMap = new Map();
                     cachedScores.rows.forEach(score => {
                         if (!detailedResultsMap.has(score.source_data_id)) {
@@ -427,6 +472,51 @@ export async function POST(request) {
                         }
                         detailedResultsMap.get(score.source_data_id).scores[score.task_name] = score.local_score;
                     });
+
+                    // 補充原始資料和標註者資訊（重標註）
+                    const sourceDataIds = Array.from(detailedResultsMap.keys());
+                    if (sourceDataIds.length > 0) {
+                        const sourceDataInfo = await sql`
+                            SELECT
+                                sd.id as source_data_id,
+                                sd.original_data,
+                                a.user_id,
+                                a.promise_status,
+                                a.verification_timeline,
+                                a.evidence_status,
+                                a.evidence_quality
+                            FROM source_data sd
+                            JOIN (
+                                SELECT DISTINCT ON (source_data_id, user_id)
+                                    source_data_id, user_id, promise_status,
+                                    verification_timeline, evidence_status, evidence_quality,
+                                    version, created_at
+                                FROM annotations
+                                WHERE source_data_id = ANY(${sourceDataIds})
+                                    AND reannotation_round = ${round.round_number}
+                                    AND status = 'completed'
+                                    AND (skipped IS NULL OR skipped = FALSE)
+                                ORDER BY source_data_id, user_id, version DESC, created_at DESC
+                            ) a ON sd.id = a.source_data_id
+                            WHERE sd.id = ANY(${sourceDataIds})
+                        `;
+
+                        sourceDataInfo.rows.forEach(row => {
+                            const detail = detailedResultsMap.get(row.source_data_id);
+                            if (detail) {
+                                detail.original_data = row.original_data;
+                                if (!detail.annotators) detail.annotators = [];
+                                detail.annotators.push({
+                                    user_id: row.user_id,
+                                    promise_status: row.promise_status,
+                                    verification_timeline: row.verification_timeline,
+                                    evidence_status: row.evidence_status,
+                                    evidence_quality: row.evidence_quality
+                                });
+                            }
+                        });
+                    }
+
                     const detailedResults = Array.from(detailedResultsMap.values());
 
                     results.push({
@@ -474,10 +564,13 @@ export async function POST(request) {
             }
         }
 
+        // 為所有結果添加用戶名稱
+        const resultsWithUsernames = await addUsernamesToResults(results);
+
         return NextResponse.json({
             success: true,
             data: {
-                results,
+                results: resultsWithUsernames,
                 summary: {
                     totalProjects: completedProjects.rows.length,
                     totalReannotations: reannotationRounds.rows.length,
@@ -508,6 +601,64 @@ function extractWeekNumber(projectName) {
     };
 
     return chineseNumbers[match[1]] || 1;
+}
+
+// 為結果添加用戶名稱
+async function addUsernamesToResults(results) {
+    try {
+        // 收集所有需要查詢的 user_id
+        const userIds = new Set();
+        results.forEach(result => {
+            if (result.detailedResults) {
+                result.detailedResults.forEach(detail => {
+                    if (detail.annotators) {
+                        detail.annotators.forEach(ann => {
+                            userIds.add(ann.user_id);
+                        });
+                    }
+                });
+            }
+        });
+
+        if (userIds.size === 0) return results;
+
+        // 批次查詢所有用戶名稱
+        const userIdArray = Array.from(userIds);
+        const users = await sql`
+            SELECT id, username
+            FROM users
+            WHERE id = ANY(${userIdArray})
+        `;
+
+        // 建立 user_id 到 username 的映射
+        const userMap = new Map();
+        users.rows.forEach(user => {
+            userMap.set(user.id, user.username);
+        });
+
+        // 為每個結果添加 username
+        const resultsWithUsernames = results.map(result => {
+            if (result.detailedResults) {
+                const detailedResults = result.detailedResults.map(detail => {
+                    if (detail.annotators) {
+                        const annotators = detail.annotators.map(ann => ({
+                            ...ann,
+                            username: userMap.get(ann.user_id) || ann.user_id
+                        }));
+                        return { ...detail, annotators };
+                    }
+                    return detail;
+                });
+                return { ...result, detailedResults };
+            }
+            return result;
+        });
+
+        return resultsWithUsernames;
+    } catch (error) {
+        console.error('添加用戶名稱失敗:', error);
+        return results; // 如果失敗，返回原始結果
+    }
 }
 
 // 計算專案一致性（初次標註）
