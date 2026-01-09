@@ -1384,10 +1384,10 @@ export default function AdminPage() {
                             </div>
 
                             {group.projects.map(project => {
-                                // 計算專案進度
-                                const totalPossibleAnnotations = project.totalTasks * project.users.length;
+                                // 計算專案進度 - 每個用戶的任務數可能不同
+                                const totalPossibleAnnotations = project.users.reduce((sum, u) => sum + u.totalTasks, 0);
                                 const totalCompletedAnnotations = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
-                                const overallPercentage = project.totalTasks > 0
+                                const overallPercentage = totalPossibleAnnotations > 0
                                     ? ((totalCompletedAnnotations / totalPossibleAnnotations) * 100).toFixed(1)
                                     : 0;
 
