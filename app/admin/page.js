@@ -1329,7 +1329,7 @@ export default function AdminPage() {
                     let groupTotalCompleted = 0;
 
                     group.projects.forEach(project => {
-                        const projectTotal = project.totalTasks * project.users.length;
+                        const projectTotal = project.users.reduce((sum, u) => sum + u.totalTasks, 0);
                         const projectCompleted = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
                         groupTotalTasks += projectTotal;
                         groupTotalCompleted += projectCompleted;
