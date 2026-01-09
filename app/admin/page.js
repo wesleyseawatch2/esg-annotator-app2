@@ -1260,6 +1260,7 @@ export default function AdminPage() {
                 userId: row.user_id,
                 username: row.username,
                 role: row.role,
+                totalTasks: parseInt(row.total_tasks) || 0,
                 completedTasks: parseInt(row.completed_tasks) || 0
             });
         });
@@ -1434,8 +1435,8 @@ export default function AdminPage() {
                                             </thead>
                                             <tbody>
                                                 {project.users.map(user => {
-                                                    const percentage = project.totalTasks > 0
-                                                        ? ((user.completedTasks / project.totalTasks) * 100).toFixed(1)
+                                                    const percentage = user.totalTasks > 0
+                                                        ? ((user.completedTasks / user.totalTasks) * 100).toFixed(1)
                                                         : 0;
                                                     return (
                                                         <tr key={user.userId} style={{ borderBottom: '1px solid #eee' }}>
@@ -1452,7 +1453,7 @@ export default function AdminPage() {
                                                                 </span>
                                                             </td>
                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{user.completedTasks}</td>
-                                                            <td style={{ padding: '10px' }}>{project.totalTasks}</td>
+                                                            <td style={{ padding: '10px' }}>{user.totalTasks}</td>
                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{percentage}%</td>
                                                             <td style={{ padding: '10px' }}>
                                                                 <div style={{
