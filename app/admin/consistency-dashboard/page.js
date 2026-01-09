@@ -16,7 +16,8 @@ export default function ConsistencyDashboard() {
     const [filters, setFilters] = useState({
         group: 'all',
         roundType: 'all', // all, initial, reannotation
-        week: 'all'
+        week: 'all',
+        persistAnswer: 'all' // all, yes, no
     });
 
     // 統計資料
@@ -122,6 +123,17 @@ export default function ConsistencyDashboard() {
                 if (filters.roundType === 'reannotation' && item.roundType !== 'reannotation') return false;
             }
             if (filters.week !== 'all' && item.week !== parseInt(filters.week)) return false;
+
+            // 篩選「堅持答案」- 只在重標註資料中篩選
+            if (filters.persistAnswer !== 'all' && item.roundType === 'reannotation') {
+                const hasPersistAnswer = item.detailedResults?.some(detail =>
+                    detail.annotators?.some(ann => ann.persist_answer === true)
+                );
+
+                if (filters.persistAnswer === 'yes' && !hasPersistAnswer) return false;
+                if (filters.persistAnswer === 'no' && hasPersistAnswer) return false;
+            }
+
             return true;
         });
     };
@@ -602,6 +614,17 @@ export default function ConsistencyDashboard() {
                                 ))}
                             </select>
                         </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600, fontSize: '13px' }}>堅持答案 (重標註)</label>
+                            <select
+                                value={filters.persistAnswer}
+                                onChange={(e) => setFilters({ ...filters, persistAnswer: e.target.value })}
+                            >
+                                <option value="all">全部資料</option>
+                                <option value="yes">✓ 有堅持答案</option>
+                                <option value="no">無堅持答案</option>
+                            </select>
+                        </div>
                     </div>
                     <p style={{ marginTop: '15px', color: theme.textSecondary, fontSize: '14px' }}>
                         顯示 {filteredData.length} / {allData.length} 筆資料
@@ -821,39 +844,60 @@ export default function ConsistencyDashboard() {
                                             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
                                                 案例 #{caseNumber}
                                             </h3>
-                                            {(() => {
-                                                // Check if there's actual disagreement among annotators
-                                                if (!detail.annotators || detail.annotators.length <= 1) {
-                                                    return null; // No dispute if 0 or 1 annotator
-                                                }
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                {(() => {
+                                                    // 檢查是否有人堅持答案
+                                                    const hasPersistAnswer = detail.annotators?.some(ann => ann.persist_answer === true);
 
-                                                const hasDisagreement = ['promise_status', 'verification_timeline', 'evidence_status', 'evidence_quality'].some(task => {
-                                                    const values = detail.annotators
-                                                        .map(ann => ann[task])
-                                                        .filter(v => v !== null && v !== undefined && v !== 'N/A');
+                                                    return hasPersistAnswer ? (
+                                                        <button style={{
+                                                            background: '#fef3c7',
+                                                            color: '#92400e',
+                                                            border: '2px solid #f59e0b',
+                                                            padding: '6px 12px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}>
+                                                            ✋ 有堅持答案
+                                                        </button>
+                                                    ) : null;
+                                                })()}
+                                                {(() => {
+                                                    // Check if there's actual disagreement among annotators
+                                                    if (!detail.annotators || detail.annotators.length <= 1) {
+                                                        return null; // No dispute if 0 or 1 annotator
+                                                    }
 
-                                                    if (values.length <= 1) return false;
+                                                    const hasDisagreement = ['promise_status', 'verification_timeline', 'evidence_status', 'evidence_quality'].some(task => {
+                                                        const values = detail.annotators
+                                                            .map(ann => ann[task])
+                                                            .filter(v => v !== null && v !== undefined && v !== 'N/A');
 
-                                                    // Check if all values are the same
-                                                    const firstValue = values[0];
-                                                    return !values.every(v => v === firstValue);
-                                                });
+                                                        if (values.length <= 1) return false;
 
-                                                return hasDisagreement ? (
-                                                    <button style={{
-                                                        background: theme.warning,
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        padding: '6px 12px',
-                                                        borderRadius: '6px',
-                                                        fontSize: '12px',
-                                                        fontWeight: 600,
-                                                        cursor: 'pointer'
-                                                    }}>
-                                                        ⚠️ 存在爭議
-                                                    </button>
-                                                ) : null;
-                                            })()}
+                                                        // Check if all values are the same
+                                                        const firstValue = values[0];
+                                                        return !values.every(v => v === firstValue);
+                                                    });
+
+                                                    return hasDisagreement ? (
+                                                        <button style={{
+                                                            background: theme.warning,
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '6px 12px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}>
+                                                            ⚠️ 存在爭議
+                                                        </button>
+                                                    ) : null;
+                                                })()}
+                                            </div>
                                         </div>
 
                                         {/* 原始文本 */}
@@ -968,10 +1012,26 @@ export default function ConsistencyDashboard() {
                                                             color: theme.primary,
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            gap: '8px'
+                                                            gap: '8px',
+                                                            justifyContent: 'space-between'
                                                         }}>
-                                                            <span style={{ fontSize: '20px' }}>👤</span>
-                                                            {annotator.username || annotator.user_id}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span style={{ fontSize: '20px' }}>👤</span>
+                                                                {annotator.username || annotator.user_id}
+                                                            </div>
+                                                            {annotator.persist_answer && (
+                                                                <span style={{
+                                                                    background: '#fef3c7',
+                                                                    color: '#92400e',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: 600,
+                                                                    whiteSpace: 'nowrap'
+                                                                }} title={annotator.reannotation_comment || '此標註者堅持原始答案'}>
+                                                                    ✋ 堅持答案
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div style={{ fontSize: '14px', lineHeight: '2' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -990,6 +1050,19 @@ export default function ConsistencyDashboard() {
                                                                 <strong>品質:</strong>
                                                                 <span>{annotator.evidence_quality || 'N/A'}</span>
                                                             </div>
+                                                            {annotator.reannotation_comment && (
+                                                                <div style={{
+                                                                    marginTop: '10px',
+                                                                    padding: '10px',
+                                                                    background: '#f9fafb',
+                                                                    borderRadius: '6px',
+                                                                    borderLeft: '3px solid #f59e0b',
+                                                                    fontSize: '13px'
+                                                                }}>
+                                                                    <div style={{ fontWeight: 600, marginBottom: '5px', color: '#92400e' }}>💬 備註：</div>
+                                                                    <div style={{ color: '#374151', lineHeight: '1.5' }}>{annotator.reannotation_comment}</div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))}

@@ -1807,6 +1807,21 @@ export default function AdminPage() {
                     </button>
                     <button
                         className="btn"
+                        onClick={async () => {
+                            if (confirm('確定要匯出所有標註資料（包含初次標註和重標註）？這會即時從資料庫查詢最新資料。')) {
+                                try {
+                                    window.open('/api/export-all-annotations?format=csv', '_blank');
+                                } catch (error) {
+                                    alert('匯出失敗: ' + error.message);
+                                }
+                            }
+                        }}
+                        style={{ background: '#10b981', color: 'white', marginRight: '10px' }}
+                    >
+                        📥 匯出所有標註資料
+                    </button>
+                    <button
+                        className="btn"
                         onClick={() => router.push('/admin/reannotation')}
                         style={{ background: '#f59e0b', color: 'white', marginRight: '10px' }}
                     >
