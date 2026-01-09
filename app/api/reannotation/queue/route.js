@@ -45,6 +45,7 @@ export async function GET(request) {
     const whereClause = whereConditions.join(' AND ');
 
     // 查詢使用者的重標註任務（只查詢有權限的專案群組）
+    // 使用子查詢取得每個 source_data_id 和 user_id 的最新版本標註
     const { rows: tasks } = await sql.query(`
       SELECT
         rt.id as task_id,
@@ -74,7 +75,14 @@ export async function GET(request) {
       JOIN reannotation_rounds rr ON rt.round_id = rr.id
       JOIN source_data sd ON rt.source_data_id = sd.id
       JOIN projects p ON rr.project_id = p.id
-      LEFT JOIN annotations a ON rt.source_data_id = a.source_data_id AND a.user_id = rt.user_id
+      LEFT JOIN LATERAL (
+        SELECT *
+        FROM annotations
+        WHERE source_data_id = rt.source_data_id
+          AND user_id = rt.user_id
+        ORDER BY version DESC, created_at DESC
+        LIMIT 1
+      ) a ON true
       WHERE ${whereClause}
         AND (
           p.group_id IS NULL
@@ -127,6 +135,25 @@ export async function GET(request) {
       });
     });
 
+    // 計算每個專案+任務組的實際重標註次數（該 Group 的第幾次）
+    for (const key in groupedTasks) {
+      const group = groupedTasks[key];
+
+      // 查詢該專案中相同 task_group 的所有 active 輪次，按建立時間排序
+      const { rows: allGroupRounds } = await sql`
+        SELECT id, created_at
+        FROM reannotation_rounds
+        WHERE project_id = ${group.projectId}
+          AND task_group = ${group.taskGroup}
+          AND status = 'active'
+        ORDER BY created_at ASC
+      `;
+
+      // 找出當前輪次在列表中的位置（第幾次）
+      const currentRoundIndex = allGroupRounds.findIndex(r => r.id === group.roundId);
+      group.groupRoundNumber = currentRoundIndex >= 0 ? currentRoundIndex + 1 : 1;
+    }
+
     // 取得每個專案的標註指引 (模擬資料，實際應從資料庫讀取)
     const guidelines = {
       group1: {
@@ -154,7 +181,8 @@ export async function GET(request) {
           items: [
             '「Yes」：報告中有提供可驗證承諾的具體證據',
             '「No」：報告中未提供相關證據',
-            '證據包含：數據、圖表、第三方認證、具體案例等'
+            '證據包含：數據、圖表、第三方認證、具體案例等',
+            '⚠️ 規則：如果承諾狀態為 No，證據狀態必須為 N/A'
           ]
         },
         evidence_quality: {
@@ -162,7 +190,11 @@ export async function GET(request) {
           items: [
             'Clear: 證據明確、完整、可量化',
             'Not Clear: 證據模糊、不完整或難以驗證',
-            'Misleading: 證據具有誤導性或與承諾不符'
+            'Misleading: 證據具有誤導性或與承諾不符',
+            '⚠️ 規則：',
+            '  • 如果承諾狀態為 No，證據品質必須為 N/A',
+            '  • 如果證據狀態為 No，證據品質必須為 N/A',
+            '  • 如果證據狀態為 Yes，證據品質不能為 N/A'
           ]
         }
       }

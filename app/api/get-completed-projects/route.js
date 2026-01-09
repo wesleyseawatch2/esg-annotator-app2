@@ -12,49 +12,61 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: '權限不足' }, { status: 403 });
     }
 
-    // 取得所有專案，並檢查每個專案是否有至少 2 位使用者完成所有標註
+    // 取得所有專案，並計算每個專案有多少位使用者完成所有標註（使用最新版本）
     const { rows: projects } = await sql`
-      WITH project_stats AS (
+      WITH latest_annotations AS (
+        -- 取得每個使用者對每筆資料的最新標註
+        SELECT DISTINCT ON (a.source_data_id, a.user_id)
+          a.source_data_id,
+          a.user_id,
+          a.status,
+          a.skipped,
+          sd.project_id
+        FROM annotations a
+        JOIN source_data sd ON a.source_data_id = sd.id
+        ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
+      ),
+      user_project_stats AS (
+        -- 計算每個使用者在每個專案的完成狀況
         SELECT
           p.id as project_id,
           p.name as project_name,
-          (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
           u.id as user_id,
           u.username,
-          (
-            SELECT COUNT(*)
-            FROM annotations a
-            WHERE a.user_id = u.id
-            AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
-            AND a.status = 'completed'
-            AND (a.skipped IS NULL OR a.skipped = FALSE)
+          (SELECT COUNT(*) FROM source_data WHERE project_id = p.id) as total_tasks,
+          COUNT(la.source_data_id) FILTER (
+            WHERE la.status = 'completed'
+            AND (la.skipped IS NULL OR la.skipped = FALSE)
           ) as completed_tasks
         FROM projects p
         CROSS JOIN users u
+        LEFT JOIN latest_annotations la ON la.project_id = p.id AND la.user_id = u.id
         WHERE u.role != 'admin'
+        GROUP BY p.id, p.name, u.id, u.username
       ),
-      completed_users AS (
+      completed_users_per_project AS (
+        -- 計算每個專案有多少位使用者完成所有任務
         SELECT
           project_id,
           project_name,
           total_tasks,
-          COUNT(*) as users_completed
-        FROM project_stats
+          COUNT(*) as users_completed,
+          STRING_AGG(username, ', ') as completed_users_names
+        FROM user_project_stats
         WHERE total_tasks > 0 AND completed_tasks = total_tasks
         GROUP BY project_id, project_name, total_tasks
-        HAVING COUNT(*) >= 2
       )
+      -- 最終結果：列出所有有標註資料的專案
       SELECT
-        cu.project_id as id,
-        cu.project_name as name,
-        cu.total_tasks,
-        cu.users_completed,
-        STRING_AGG(ps.username, ', ') as completed_users_names
-      FROM completed_users cu
-      JOIN project_stats ps ON cu.project_id = ps.project_id
-      WHERE ps.completed_tasks = ps.total_tasks
-      GROUP BY cu.project_id, cu.project_name, cu.total_tasks, cu.users_completed
-      ORDER BY cu.project_name;
+        p.id,
+        p.name,
+        COALESCE(cup.total_tasks, (SELECT COUNT(*) FROM source_data WHERE project_id = p.id)) as total_tasks,
+        COALESCE(cup.users_completed, 0) as users_completed,
+        COALESCE(cup.completed_users_names, '') as completed_users_names
+      FROM projects p
+      LEFT JOIN completed_users_per_project cup ON p.id = cup.project_id
+      WHERE EXISTS (SELECT 1 FROM source_data WHERE project_id = p.id)
+      ORDER BY p.name;
     `;
 
     return NextResponse.json({

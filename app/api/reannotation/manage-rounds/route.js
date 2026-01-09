@@ -50,6 +50,23 @@ export async function GET(request) {
       ORDER BY rr.created_at DESC
     `;
 
+    // 計算每個輪次在其 Group 中的實際次數
+    for (const round of rounds) {
+      // 查詢該專案中相同 task_group 的所有 active 輪次，按建立時間排序
+      const { rows: allGroupRounds } = await sql`
+        SELECT id, created_at
+        FROM reannotation_rounds
+        WHERE project_id = ${round.project_id}
+          AND task_group = ${round.task_group}
+          AND status = 'active'
+        ORDER BY created_at ASC
+      `;
+
+      // 找出當前輪次在列表中的位置（第幾次）
+      const currentRoundIndex = allGroupRounds.findIndex(r => r.id === round.round_id);
+      round.group_round_number = currentRoundIndex >= 0 ? currentRoundIndex + 1 : 1;
+    }
+
     return NextResponse.json({
       success: true,
       data: { rounds }

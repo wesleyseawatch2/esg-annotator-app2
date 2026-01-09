@@ -68,10 +68,12 @@ export async function POST(request) {
 
       const task = taskRows[0];
 
-      // 2. 取得原始標註資料
+      // 2. 取得原始標註資料和專案資訊
       const { rows: oldAnnotations } = await sql`
-        SELECT * FROM annotations
-        WHERE source_data_id = ${sourceDataId} AND user_id = ${userId}
+        SELECT a.*, sd.project_id
+        FROM annotations a
+        JOIN source_data sd ON a.source_data_id = sd.id
+        WHERE a.source_data_id = ${sourceDataId} AND a.user_id = ${userId}
       `;
 
       const oldAnnotation = oldAnnotations.length > 0 ? oldAnnotations[0] : null;
@@ -114,52 +116,80 @@ export async function POST(request) {
         `;
       }
 
-      // 4. 更新標註資料
+      // 4. 插入新的標註記錄（不覆蓋原本的）
       const currentVersion = oldAnnotation ? (oldAnnotation.version || 1) : 1;
-      const newVersion = auditEntries.length > 0 ? currentVersion + 1 : currentVersion;
+      const newVersion = currentVersion + 1;
 
-      // 構建更新 SQL
-      const updateFields = [];
-      const updateValues = [];
-      let paramIndex = 1;
-
-      // 動態添加需要更新的欄位
-      for (const [key, value] of Object.entries(answers)) {
-        updateFields.push(`${key} = $${paramIndex}`);
-        updateValues.push(value);
-        paramIndex++;
+      if (!oldAnnotation) {
+        await sql.query('ROLLBACK');
+        return NextResponse.json({
+          success: false,
+          error: '找不到原始標註資料'
+        }, { status: 404 });
       }
 
-      // 添加固定欄位
-      updateFields.push(`version = $${paramIndex}`);
-      updateValues.push(newVersion);
-      paramIndex++;
+      // 複製原始標註的所有欄位，然後更新重標註的部分
+      const newAnnotation = {
+        source_data_id: sourceDataId,
+        user_id: userId,
+        esg_type: oldAnnotation.esg_type,
+        promise_status: answers.promise_status || oldAnnotation.promise_status,
+        verification_timeline: answers.verification_timeline || oldAnnotation.verification_timeline,
+        evidence_status: answers.evidence_status || oldAnnotation.evidence_status,
+        evidence_quality: answers.evidence_quality || oldAnnotation.evidence_quality,
+        promise_string: answers.promise_string || oldAnnotation.promise_string,
+        evidence_string: answers.evidence_string || oldAnnotation.evidence_string,
+        status: oldAnnotation.status,
+        skipped: oldAnnotation.skipped,
+        reannotation_round: task.round_number,
+        version: newVersion,
+        persist_answer: persistAnswer,
+        reannotation_comment: comment
+      };
 
-      updateFields.push(`reannotation_round = $${paramIndex}`);
-      updateValues.push(task.round_number);
-      paramIndex++;
-
-      updateFields.push(`persist_answer = $${paramIndex}`);
-      updateValues.push(persistAnswer);
-      paramIndex++;
-
-      updateFields.push(`reannotation_comment = $${paramIndex}`);
-      updateValues.push(comment);
-      paramIndex++;
-
-      updateFields.push(`updated_at = NOW()`);
-
-      // WHERE 條件
-      updateValues.push(sourceDataId);
-      updateValues.push(userId);
-
-      const updateQuery = `
-        UPDATE annotations
-        SET ${updateFields.join(', ')}
-        WHERE source_data_id = $${paramIndex} AND user_id = $${paramIndex + 1}
+      // 插入新的標註記錄（如果已存在則更新）
+      await sql`
+        INSERT INTO annotations (
+          source_data_id, user_id, esg_type,
+          promise_status, verification_timeline, evidence_status, evidence_quality,
+          promise_string, evidence_string,
+          status, skipped,
+          reannotation_round, version, persist_answer, reannotation_comment,
+          created_at, updated_at
+        ) VALUES (
+          ${newAnnotation.source_data_id},
+          ${newAnnotation.user_id},
+          ${newAnnotation.esg_type},
+          ${newAnnotation.promise_status},
+          ${newAnnotation.verification_timeline},
+          ${newAnnotation.evidence_status},
+          ${newAnnotation.evidence_quality},
+          ${newAnnotation.promise_string},
+          ${newAnnotation.evidence_string},
+          ${newAnnotation.status},
+          ${newAnnotation.skipped},
+          ${newAnnotation.reannotation_round},
+          ${newAnnotation.version},
+          ${newAnnotation.persist_answer},
+          ${newAnnotation.reannotation_comment},
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (source_data_id, user_id, version)
+        DO UPDATE SET
+          esg_type = EXCLUDED.esg_type,
+          promise_status = EXCLUDED.promise_status,
+          verification_timeline = EXCLUDED.verification_timeline,
+          evidence_status = EXCLUDED.evidence_status,
+          evidence_quality = EXCLUDED.evidence_quality,
+          promise_string = EXCLUDED.promise_string,
+          evidence_string = EXCLUDED.evidence_string,
+          status = EXCLUDED.status,
+          skipped = EXCLUDED.skipped,
+          persist_answer = EXCLUDED.persist_answer,
+          reannotation_comment = EXCLUDED.reannotation_comment,
+          updated_at = NOW()
       `;
-
-      await sql.query(updateQuery, updateValues);
 
       // 5. 更新任務狀態
       await sql`

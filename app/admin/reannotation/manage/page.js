@@ -416,13 +416,14 @@ export default function ManageReannotationRoundsPage() {
                         ▼
                       </button>
                       <h3 style={{ margin: 0 }}>
-                        {round.project_name} - Round {round.round_number}
+                        {round.project_name} - {getGroupName(round.task_group)} 第 {round.group_round_number || 1} 次
+                        <span style={{ color: '#9ca3af', fontSize: '14px', marginLeft: '8px' }}>
+                          (整體 Round {round.round_number})
+                        </span>
                       </h3>
                       {getStatusBadge(round.status)}
                     </div>
                     <div style={{ marginLeft: '50px', color: '#6b7280', fontSize: '14px' }}>
-                      <span>任務組: <strong>{getGroupName(round.task_group)}</strong></span>
-                      <span style={{ margin: '0 15px' }}>|</span>
                       <span>門檻: <strong>{round.threshold}</strong></span>
                       <span style={{ margin: '0 15px' }}>|</span>
                       <span>建立時間: {new Date(round.created_at).toLocaleDateString('zh-TW')}</span>

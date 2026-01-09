@@ -9,17 +9,19 @@
     "start": "next start",
     "lint": "eslint",
     "migrate:skipped": "node scripts/migrate-add-skipped.js",
-    "migrate:reannotation": "node scripts/migrate-add-reannotation.js"
+    "migrate:reannotation": "node scripts/migrate-add-reannotation.js",
+    "migrate:fix-unique-constraint": "node scripts/migrate-fix-annotations-unique-constraint.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.0.0",
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",
-    "next": "15.5.7",
+    "next": "15.5.9",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.4.296",
     "react": "19.1.2",
-    "react-dom": "19.1.2"
+    "react-dom": "19.1.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

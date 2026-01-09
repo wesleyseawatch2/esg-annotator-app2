@@ -8,7 +8,10 @@
       "Bash(git stash:*)",
       "Bash(git stash pop:*)",
       "Bash(cat:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(dir \"c:\\\\esg-annotator-app\\\\.next\")",
+      "Bash(node -e:*)",
+      "Bash(node scripts/read-csv-sample.js:*)"
     ],
     "deny": [],
     "ask": []

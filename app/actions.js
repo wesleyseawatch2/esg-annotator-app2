@@ -540,12 +540,12 @@ export async function saveAnnotation(data) {
     await sql`
       INSERT INTO annotations (
         source_data_id, user_id, esg_type, promise_status, promise_string,
-        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, updated_at
+        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, version, updated_at
       ) VALUES (
         ${source_data_id}, ${user_id}, ${esgTypeArray}, ${promise_status}, ${promise_string},
-        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, NOW()
+        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, 1, NOW()
       )
-      ON CONFLICT (source_data_id, user_id)
+      ON CONFLICT (source_data_id, user_id, version)
       DO UPDATE SET
         esg_type = EXCLUDED.esg_type,
         promise_status = EXCLUDED.promise_status,
@@ -585,6 +585,7 @@ export async function getAllUsersProgress() {
           AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
           AND a.status = 'completed'
           AND (a.skipped IS NULL OR a.skipped = FALSE)
+          AND a.reannotation_round = 0
         ) as completed_tasks
       FROM user_group_permissions ugp
       JOIN users u ON ugp.user_id = u.id
@@ -592,6 +593,40 @@ export async function getAllUsersProgress() {
       JOIN project_groups pg ON p.group_id = pg.id
       WHERE p.group_id IS NOT NULL
       ORDER BY pg.name, p.name, u.username;
+    `;
+    return { success: true, data: rows };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getAllReannotationProgress() {
+  try {
+    // 查詢所有重標註任務的進度（從 reannotation_tasks 表）
+    const { rows } = await sql`
+      SELECT
+        u.id as user_id,
+        u.username,
+        u.role,
+        p.id as project_id,
+        p.name as project_name,
+        p.group_id,
+        pg.name as group_name,
+        rr.round_number,
+        rr.task_group,
+        COUNT(DISTINCT rt.source_data_id) as total_tasks,
+        COUNT(DISTINCT CASE
+          WHEN rt.status IN ('submitted', 'skipped')
+          THEN rt.source_data_id
+        END) as completed_tasks
+      FROM reannotation_tasks rt
+      JOIN reannotation_rounds rr ON rt.round_id = rr.id
+      JOIN projects p ON rr.project_id = p.id
+      JOIN users u ON rt.user_id = u.id
+      LEFT JOIN project_groups pg ON p.group_id = pg.id
+      GROUP BY u.id, u.username, u.role, p.id, p.name, p.group_id,
+               pg.name, rr.round_number, rr.task_group
+      ORDER BY pg.name, p.name, rr.round_number, rr.task_group, u.username;
     `;
     return { success: true, data: rows };
   } catch (error) {

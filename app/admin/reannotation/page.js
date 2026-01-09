@@ -12,6 +12,7 @@ export default function AdminReannotationPage() {
   const [taskGroup, setTaskGroup] = useState('group1');
   const [threshold, setThreshold] = useState(0.5);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState('');
   const router = useRouter();
 
@@ -31,7 +32,7 @@ export default function AdminReannotationPage() {
         router.push('/');
       } else {
         setUser(parsedUser);
-        loadProjects();
+        loadProjects(parsedUser.id);
       }
     } else {
       alert('請先登入');
@@ -39,28 +40,41 @@ export default function AdminReannotationPage() {
     }
   }, [router]);
 
-  const loadProjects = async () => {
+  const loadProjects = async (userId) => {
+    setRefreshing(true);
     try {
-      // 載入已完成標註的專案
-      const savedUser = JSON.parse(localStorage.getItem('annotatorUser'));
       const response = await fetch('/api/get-completed-projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: savedUser.id })
+        body: JSON.stringify({ userId })
       });
 
       const result = await response.json();
       if (result.success) {
         setProjects(result.projects);
+        console.log('專案列表已更新:', result.projects.length, '個專案');
+      } else {
+        console.error('載入專案失敗:', result.error);
+        alert(`載入專案失敗: ${result.error}`);
       }
     } catch (error) {
       console.error('載入專案失敗:', error);
+      alert(`載入專案失敗: ${error.message}`);
+    } finally {
+      setRefreshing(false);
     }
   };
 
   const handleCreateRound = async () => {
     if (!selectedProject) {
       alert('請選擇專案');
+      return;
+    }
+
+    // 驗證專案是否有足夠的使用者完成標註
+    const project = projects.find(p => p.id === selectedProject);
+    if (project && project.users_completed < 2) {
+      alert('此專案尚未有足夠的使用者完成所有標註（需至少 2 位），無法建立重標註輪次');
       return;
     }
 
@@ -107,6 +121,8 @@ export default function AdminReannotationPage() {
           );
         }
         setMessage('');
+        // 重新載入專案列表以更新統計資料
+        await loadProjects(user.id);
       } else {
         alert(`建立失敗: ${result.error}`);
         setMessage('');
@@ -260,19 +276,66 @@ export default function AdminReannotationPage() {
         <h2 style={{ marginTop: 0 }}>建立新輪次</h2>
 
         <div className="form-group">
-          <label className="form-label">選擇專案 *</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label className="form-label" style={{ margin: 0 }}>選擇專案 *</label>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => loadProjects(user.id)}
+              disabled={loading || refreshing}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                background: refreshing ? '#9ca3af' : '#10b981',
+                color: 'white',
+                cursor: (loading || refreshing) ? 'not-allowed' : 'pointer',
+                opacity: (loading || refreshing) ? 0.6 : 1
+              }}
+            >
+              {refreshing ? '⏳ 載入中...' : '🔄 重新整理'}
+            </button>
+          </div>
           <select
             className="form-control"
             value={selectedProject || ''}
             onChange={(e) => setSelectedProject(e.target.value ? parseInt(e.target.value) : null)}
+            disabled={refreshing}
           >
-            <option value="">請選擇專案...</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.users_completed} 位使用者完成，共 {p.total_tasks} 題)
-              </option>
-            ))}
+            <option value="">{refreshing ? '載入中...' : '請選擇專案...'}</option>
+            {projects.map(p => {
+              const isAvailable = p.users_completed >= 2;
+              return (
+                <option
+                  key={p.id}
+                  value={p.id}
+                  disabled={!isAvailable}
+                  style={{
+                    color: isAvailable ? '#000000' : '#9ca3af',
+                    fontWeight: isAvailable ? 'normal' : 'lighter'
+                  }}
+                >
+                  {isAvailable ? '✓ ' : '✗ '}
+                  {p.name} ({p.users_completed} 位使用者完成，共 {p.total_tasks} 題)
+                  {!isAvailable && ' - 不可用'}
+                </option>
+              );
+            })}
           </select>
+          {projects.length === 0 && !refreshing && (
+            <small style={{ color: '#ef4444', display: 'block', marginTop: '8px' }}>
+              ⚠️ 目前沒有任何專案
+            </small>
+          )}
+          {refreshing && (
+            <small style={{ color: '#3b82f6', display: 'block', marginTop: '8px' }}>
+              ⏳ 正在重新載入專案列表...
+            </small>
+          )}
+          {selectedProject && projects.find(p => p.id === selectedProject)?.users_completed < 2 && (
+            <small style={{ color: '#ef4444', display: 'block', marginTop: '8px' }}>
+              ⚠️ 此專案尚未有足夠的使用者完成所有標註（需至少 2 位）
+            </small>
+          )}
         </div>
 
         <div className="form-group">

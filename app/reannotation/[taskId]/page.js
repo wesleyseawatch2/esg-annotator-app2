@@ -17,6 +17,7 @@ export default function ReannotationDetailPage() {
 
   const [user, setUser] = useState(null);
   const [taskData, setTaskData] = useState(null);
+  const [groupData, setGroupData] = useState(null); // 保存 group 資訊（包含 groupRoundNumber）
   const [guidelines, setGuidelines] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -55,11 +56,22 @@ export default function ReannotationDetailPage() {
       const result = await response.json();
 
       if (result.success) {
-        const allTasks = result.data.tasks.flatMap(group => group.tasks);
-        const currentTask = allTasks.find(t => t.taskId === parseInt(taskId));
+        // 找到包含當前任務的 group
+        let currentTaskGroup = null;
+        let currentTask = null;
 
-        if (currentTask) {
+        for (const group of result.data.tasks) {
+          const task = group.tasks.find(t => t.taskId === parseInt(taskId));
+          if (task) {
+            currentTask = task;
+            currentTaskGroup = group;
+            break;
+          }
+        }
+
+        if (currentTask && currentTaskGroup) {
           setTaskData(currentTask);
+          setGroupData(currentTaskGroup); // 保存 group 資訊
           setGuidelines(result.data.guidelines);
 
           const initialFormData = {
@@ -318,6 +330,17 @@ export default function ReannotationDetailPage() {
     return names[taskKey] || taskKey;
   };
 
+  const getVerificationTimelineLabel = (value) => {
+    const labels = {
+      'within_2_years': '2年內',
+      'between_2_and_5_years': '2-5年',
+      'longer_than_5_years': '5年以上',
+      'already': '已執行',
+      'N/A': 'N/A'
+    };
+    return labels[value] || value || '未填寫';
+  };
+
   if (loading || !taskData) {
     return (
       <div className="container">
@@ -402,7 +425,11 @@ export default function ReannotationDetailPage() {
           <div>
             <h1 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>🔄 重標註任務 #{taskData.sourceDataId}</h1>
             <p style={{ margin: 0, opacity: 0.9, fontSize: '14px' }}>
-              頁碼: {taskData.pageNumber} | {taskGroup === 'group1' ? '承諾與時間軸' : '證據狀態與品質'}
+              頁碼: {taskData.pageNumber} | {taskGroup === 'group1' ? '承諾與時間軸' : '證據狀態與品質'} |
+              第 {groupData?.groupRoundNumber || 1} 次重標註
+              <span style={{ opacity: 0.7, fontSize: '12px', marginLeft: '4px' }}>
+                (整體 Round {groupData?.roundNumber || 1})
+              </span>
             </p>
           </div>
           <button className="btn" style={{ background: '#6b7280', color: 'white' }} onClick={() => router.push('/reannotation')}>
@@ -485,6 +512,57 @@ export default function ReannotationDetailPage() {
           <div className="panel">
             <h2>標註欄位</h2>
 
+            {/* 如果是 Group 2，先顯示 Group 1 的內容（只讀） */}
+            {taskGroup === 'group2' && (
+              <div style={{
+                marginBottom: '25px',
+                padding: '15px',
+                background: '#f9fafb',
+                border: '2px solid #e5e7eb',
+                borderRadius: '8px'
+              }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#6b7280', fontSize: '16px' }}>
+                  📋 Group 1 標註內容（參考）
+                </h3>
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div className="field">
+                    <label style={{ color: '#6b7280' }}>承諾狀態</label>
+                    <input
+                      type="text"
+                      value={formData.promise_status || '未填寫'}
+                      disabled
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        background: '#f3f4f6',
+                        color: '#374151',
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                  </div>
+                  <div className="field">
+                    <label style={{ color: '#6b7280' }}>驗證時間軸</label>
+                    <input
+                      type="text"
+                      value={getVerificationTimelineLabel(formData.verification_timeline)}
+                      disabled
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        background: '#f3f4f6',
+                        color: '#374151',
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Group 1: 承諾狀態 + 驗證時間軸 */}
             {taskData.tasksFlagged.promise_status !== undefined && (
               <div className="field">
@@ -494,7 +572,24 @@ export default function ReannotationDetailPage() {
                 </label>
                 <select
                   value={formData.promise_status}
-                  onChange={(e) => setFormData({ ...formData, promise_status: e.target.value })}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    let newTimeline = formData.verification_timeline;
+
+                    if (newStatus === 'No') {
+                      // 選擇 No 時，驗證時間軸設為 N/A
+                      newTimeline = 'N/A';
+                    } else if (newStatus === 'Yes' && formData.verification_timeline === 'N/A') {
+                      // 選擇 Yes 時，如果驗證時間軸是 N/A，則清空
+                      newTimeline = '';
+                    }
+
+                    setFormData({
+                      ...formData,
+                      promise_status: newStatus,
+                      verification_timeline: newTimeline
+                    });
+                  }}
                 >
                   <option value="">請選擇</option>
                   <option value="Yes">Yes</option>
@@ -512,12 +607,20 @@ export default function ReannotationDetailPage() {
                 <select
                   value={formData.verification_timeline}
                   onChange={(e) => setFormData({ ...formData, verification_timeline: e.target.value })}
+                  disabled={formData.promise_status === 'No'}
                 >
-                  <option value="">請選擇</option>
-                  <option value="within_2_years">2年內</option>
-                  <option value="between_2_and_5_years">2-5年</option>
-                  <option value="longer_than_5_years">5年以上</option>
-                  <option value="already">已執行</option>
+                  {formData.promise_status === 'No' ? (
+                    <option value="N/A">N/A</option>
+                  ) : (
+                    <>
+                      <option value="">請選擇</option>
+                      <option value="within_2_years">2年內</option>
+                      <option value="between_2_and_5_years">2-5年</option>
+                      <option value="longer_than_5_years">5年以上</option>
+                      <option value="already">已執行</option>
+                      {formData.promise_status !== 'Yes' && <option value="N/A">N/A</option>}
+                    </>
+                  )}
                 </select>
               </div>
             )}
@@ -531,11 +634,40 @@ export default function ReannotationDetailPage() {
                 </label>
                 <select
                   value={formData.evidence_status}
-                  onChange={(e) => setFormData({ ...formData, evidence_status: e.target.value })}
+                  onChange={(e) => {
+                    const newEvidenceStatus = e.target.value;
+                    let newEvidenceQuality = formData.evidence_quality;
+
+                    // 規則 1: 如果承諾狀態是 No，證據狀態和品質都應該是 N/A
+                    if (formData.promise_status === 'No') {
+                      newEvidenceQuality = 'N/A';
+                    }
+                    // 規則 2: 如果證據狀態選 No，證據品質設為 N/A
+                    else if (newEvidenceStatus === 'No') {
+                      newEvidenceQuality = 'N/A';
+                    }
+                    // 規則 3: 如果證據狀態選 Yes 且品質是 N/A，則清空
+                    else if (newEvidenceStatus === 'Yes' && formData.evidence_quality === 'N/A') {
+                      newEvidenceQuality = '';
+                    }
+
+                    setFormData({
+                      ...formData,
+                      evidence_status: newEvidenceStatus,
+                      evidence_quality: newEvidenceQuality
+                    });
+                  }}
+                  disabled={formData.promise_status === 'No'}
                 >
-                  <option value="">請選擇</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
+                  {formData.promise_status === 'No' ? (
+                    <option value="N/A">N/A</option>
+                  ) : (
+                    <>
+                      <option value="">請選擇</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </>
+                  )}
                 </select>
               </div>
             )}
@@ -549,11 +681,19 @@ export default function ReannotationDetailPage() {
                 <select
                   value={formData.evidence_quality}
                   onChange={(e) => setFormData({ ...formData, evidence_quality: e.target.value })}
+                  disabled={formData.promise_status === 'No' || formData.evidence_status === 'No'}
                 >
-                  <option value="">請選擇</option>
-                  <option value="Clear">清晰</option>
-                  <option value="Not Clear">不清晰</option>
-                  <option value="Misleading">誤導性</option>
+                  {(formData.promise_status === 'No' || formData.evidence_status === 'No') ? (
+                    <option value="N/A">N/A</option>
+                  ) : (
+                    <>
+                      <option value="">請選擇</option>
+                      <option value="Clear">清晰</option>
+                      <option value="Not Clear">不清晰</option>
+                      <option value="Misleading">誤導性</option>
+                      {formData.evidence_status !== 'Yes' && <option value="N/A">N/A</option>}
+                    </>
+                  )}
                 </select>
               </div>
             )}

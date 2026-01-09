@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getProjectsWithProgress, getAllUsersProgress } from '../actions';
+import { getProjectsWithProgress, getAllUsersProgress, getAllReannotationProgress } from '../actions';
 import {
     deleteProject, deleteProjectOnly, saveProjectData, updateProjectOffset,
     diagnoseProject, exportProjectAnnotations, batchUploadGroupData,
@@ -12,7 +12,8 @@ import {
     deleteAnnouncement, toggleAnnouncementStatus,
     scanAndCreateCompanyRecords, getAllCompanies, assignCompanyDataToNewProject,
     assignCompanyDataToExistingProject, getCompanyAssignmentDetails,
-    removeCompanyDataAssignment, getAvailableRanges
+    removeCompanyDataAssignment, getAvailableRanges, diagnoseDuplicateCompanies,
+    cleanOrphanCompanies
 } from '../adminActions';
 import { useRouter } from 'next/navigation';
 import { upload } from '@vercel/blob/client';
@@ -22,7 +23,9 @@ export default function AdminPage() {
     const [user, setUser] = useState(null);
     const [projects, setProjects] = useState([]);
     const [allUsersProgress, setAllUsersProgress] = useState([]);
+    const [allReannotationProgress, setAllReannotationProgress] = useState([]);
     const [showProgressView, setShowProgressView] = useState(false);
+    const [progressTab, setProgressTab] = useState('initial'); // 'initial' or 'reannotation'
     const [message, setMessage] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
@@ -67,10 +70,20 @@ export default function AdminPage() {
     const [assignmentMode, setAssignmentMode] = useState('new'); // 'new' or 'existing'
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectGroupId, setNewProjectGroupId] = useState(null);
+    const [diagnosticResult, setDiagnosticResult] = useState(null);
+    const [showDiagnostic, setShowDiagnostic] = useState(false);
     const [existingProjectId, setExistingProjectId] = useState(null);
     const [companyAssignments, setCompanyAssignments] = useState([]);
     const [availableRanges, setAvailableRanges] = useState([]);
     const [isCompanyMigrated, setIsCompanyMigrated] = useState(false);
+    // PDF 問題檢查相關狀態
+    const [showPdfIssues, setShowPdfIssues] = useState(false);
+    const [pdfIssuesData, setPdfIssuesData] = useState(null);
+    const [isCheckingPdf, setIsCheckingPdf] = useState(false);
+    // PDF 編輯相關狀態
+    const [editingPdfProject, setEditingPdfProject] = useState(null);
+    const [editingPdfUrls, setEditingPdfUrls] = useState('');
+    const [showPdfEditor, setShowPdfEditor] = useState(false);
     const formRef = useRef(null);
     const batchFormRef = useRef(null);
     const router = useRouter();
@@ -103,6 +116,14 @@ export default function AdminPage() {
             setAllUsersProgress(result.data);
         } else {
             alert(`無法載入進度資料: ${result.error}`);
+        }
+
+        // 同時載入重標註進度
+        const reannotationResult = await getAllReannotationProgress();
+        if (reannotationResult.success) {
+            setAllReannotationProgress(reannotationResult.data);
+        } else {
+            console.error(`無法載入重標註進度資料: ${reannotationResult.error}`);
         }
     };
 
@@ -843,6 +864,51 @@ export default function AdminPage() {
         }
     };
 
+    const handleDiagnose = async () => {
+        setIsUploading(true);
+        setUploadProgress('正在診斷重複公司記錄...');
+
+        const result = await diagnoseDuplicateCompanies(user.id);
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            setDiagnosticResult(result);
+            setShowDiagnostic(true);
+        } else {
+            alert(`診斷失敗: ${result.error}`);
+        }
+    };
+
+    const handleCleanOrphans = async () => {
+        if (!window.confirm('確定要清理所有孤立的公司記錄嗎？此操作無法復原！')) {
+            return;
+        }
+
+        setIsUploading(true);
+        setUploadProgress('正在清理孤立的公司記錄...');
+
+        const result = await cleanOrphanCompanies(user.id);
+
+        setIsUploading(false);
+        setUploadProgress('');
+
+        if (result.success) {
+            alert(result.message + '\n已刪除：\n' + result.orphans.join('\n'));
+            await loadCompanies();
+            // 重新診斷以更新顯示
+            if (showDiagnostic) {
+                const diagResult = await diagnoseDuplicateCompanies(user.id);
+                if (diagResult.success) {
+                    setDiagnosticResult(diagResult);
+                }
+            }
+        } else {
+            alert(`清理失敗: ${result.error}`);
+        }
+    };
+
     const handleSelectCompany = async (companyId) => {
         const company = companies.find(c => c.id === parseInt(companyId));
         setSelectedCompany(company);
@@ -962,13 +1028,205 @@ export default function AdminPage() {
         }
     };
 
+    // 檢查 PDF 載入問題
+    const handleCheckPdfIssues = async () => {
+        setIsCheckingPdf(true);
+        try {
+            const response = await fetch('/api/check-pdf-issues', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setPdfIssuesData(data);
+                setShowPdfIssues(true);
+            } else {
+                alert(`檢查失敗: ${data.error}`);
+            }
+        } catch (error) {
+            alert(`檢查時發生錯誤: ${error.message}`);
+        } finally {
+            setIsCheckingPdf(false);
+        }
+    };
+
+    // 重建專案的 PDF URLs
+    const handleRebuildPdfUrls = async (projectId, projectName, useContentMatching = false) => {
+        const matchingMethodText = useContentMatching
+            ? '🧠 內容智能匹配\n- 從 Blob 掃描 PDF 檔案\n- 提取每個 PDF 的文字內容\n- 與標註資料的原始文字進行相似度比對\n- 自動找到最匹配的 PDF 頁面'
+            : '📝 檔案名稱匹配（傳統方式）\n- 根據檔案名稱中的頁碼\n- 使用 page_offset 計算對應關係';
+
+        if (!window.confirm(`確定要重建專案 "${projectName}" 的 PDF URLs 嗎？\n\n使用方法：\n${matchingMethodText}\n\n這將會：\n1. 掃描 Blob 中的 PDF 檔案\n2. 重建 pdf_urls 映射\n3. 更新所有 source_data 的 source_url`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/rebuild-pdf-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId,
+                    useContentMatching,
+                    similarityThreshold: 0.7
+                })
+            });
+
+            // 檢查回應是否為 JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('非 JSON 回應:', text);
+                alert(`❌ 伺服器錯誤\n\n回應格式不正確（可能是內部伺服器錯誤）\n\n請檢查：\n1. Vercel Blob 設定是否正確\n2. 環境變數是否設定\n3. 伺服器日誌以獲取詳細資訊\n\n錯誤預覽: ${text.substring(0, 200)}`);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                let successMsg = `✅ 修復成功！\n\n專案: ${data.projectName}\n`;
+
+                if (data.method === 'content_matching') {
+                    // 內容匹配模式的結果
+                    successMsg += `\n🧠 使用內容智能匹配\n\n` +
+                        `總資料筆數: ${data.summary.totalSourceData}\n` +
+                        `成功匹配: ${data.summary.successCount}\n` +
+                        `匹配失敗: ${data.summary.failCount}\n` +
+                        `匹配率: ${data.summary.matchRate}\n` +
+                        `\n找到 ${data.pageCount} 個不同的 PDF 頁面`;
+                } else {
+                    // 檔案名稱匹配模式的結果
+                    successMsg += `\n📝 使用檔案名稱匹配\n\n` +
+                        `找到 ${data.pageCount} 個 PDF 頁面 (${data.pageRange})\n` +
+                        `更新了 ${data.sourceDataUpdated} 筆資料\n` +
+                        (data.sourceDataSkipped > 0 ? `跳過 ${data.sourceDataSkipped} 筆資料（找不到對應頁面）\n` : '') +
+                        (data.unrecognizedFiles ? `\n⚠️ 有 ${data.unrecognizedFiles.length} 個檔案無法識別頁碼` : '');
+                }
+
+                alert(successMsg);
+
+                // 重新檢查問題
+                await handleCheckPdfIssues();
+            } else {
+                let errorMsg = `❌ 修復失敗\n\n${data.error}`;
+
+                if (data.suggestion) {
+                    errorMsg += `\n\n💡 建議: ${data.suggestion}`;
+                }
+
+                if (data.debugInfo) {
+                    errorMsg += `\n\n🔍 診斷資訊:\n` +
+                        `- 專案名稱: ${data.debugInfo.projectName}\n` +
+                        `- 總 Blob 數: ${data.debugInfo.totalBlobCount}\n` +
+                        `- 總 PDF 數: ${data.debugInfo.totalPdfCount}`;
+
+                    if (data.debugInfo.samplePdfNames && data.debugInfo.samplePdfNames.length > 0) {
+                        errorMsg += `\n\n範例 PDF 檔案名稱:\n${data.debugInfo.samplePdfNames.join('\n')}`;
+                    }
+                }
+
+                if (data.foundFiles && data.foundFiles.length > 0) {
+                    errorMsg += `\n\n找到的檔案:\n${data.foundFiles.join('\n')}`;
+                }
+
+                alert(errorMsg);
+            }
+        } catch (error) {
+            console.error('修復 PDF URLs 時發生錯誤:', error);
+            alert(`❌ 修復時發生錯誤\n\n${error.message}\n\n請檢查瀏覽器控制台以獲取更多詳細資訊`);
+        }
+    };
+
+    // 查看專案的 PDF URLs
+    const handleViewPdfUrls = async (projectId, projectName) => {
+        try {
+            const response = await fetch('/api/get-project-pdf-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId })
+            });
+
+            // 檢查回應是否為 JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('非 JSON 回應:', text);
+                console.error('專案 ID:', projectId);
+                console.error('HTTP 狀態:', response.status);
+                alert(`❌ 伺服器錯誤\n\n無法載入專案資料\n\nHTTP ${response.status}\n\n可能原因：\n1. 資料庫連線問題\n2. 專案 ID (${projectId}) 格式錯誤\n3. 資料庫欄位格式問題\n\n錯誤預覽: ${text.substring(0, 200)}\n\n完整錯誤已記錄到瀏覽器控制台`);
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                setEditingPdfProject({ id: projectId, name: projectName, pageOffset: data.pageOffset });
+                setEditingPdfUrls(JSON.stringify(data.pdfUrls || {}, null, 2));
+                setShowPdfEditor(true);
+            } else {
+                alert(`無法載入專案資料: ${data.error}`);
+            }
+        } catch (error) {
+            console.error('查看 PDF URLs 時發生錯誤:', error);
+            alert(`載入時發生錯誤: ${error.message}\n\n請檢查瀏覽器控制台以獲取更多詳細資訊`);
+        }
+    };
+
+    // 儲存編輯後的 PDF URLs
+    const handleSavePdfUrls = async () => {
+        if (!editingPdfProject) return;
+
+        try {
+            // 驗證 JSON 格式
+            const pdfUrls = JSON.parse(editingPdfUrls);
+
+            if (typeof pdfUrls !== 'object' || Array.isArray(pdfUrls)) {
+                alert('PDF URLs 必須是一個物件格式，例如：{"1": "url1", "2": "url2"}');
+                return;
+            }
+
+            // 更新資料庫
+            const response = await fetch('/api/update-project-pdf-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: editingPdfProject.id,
+                    pdfUrls
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(`✅ 儲存成功！\n\n已更新專案 "${editingPdfProject.name}" 的 PDF URLs`);
+                setShowPdfEditor(false);
+                setEditingPdfProject(null);
+                setEditingPdfUrls('');
+                // 重新檢查問題
+                await handleCheckPdfIssues();
+            } else {
+                alert(`儲存失敗: ${data.error}`);
+            }
+        } catch (error) {
+            if (error instanceof SyntaxError) {
+                alert(`❌ JSON 格式錯誤\n\n${error.message}\n\n請確認格式正確`);
+            } else {
+                alert(`儲存時發生錯誤: ${error.message}`);
+            }
+        }
+    };
+
     if (!user) return <div className="container"><h1>驗證中...</h1></div>;
 
     // 進度視圖 UI
     if (showProgressView) {
+        // 根據當前分頁選擇數據源
+        const currentProgressData = progressTab === 'initial' ? allUsersProgress : allReannotationProgress;
+
         // 整理資料：按群組分組
         const groupsMap = {};
-        allUsersProgress.forEach(row => {
+        currentProgressData.forEach(row => {
             const groupKey = row.group_name || '未分組';
 
             if (!groupsMap[groupKey]) {
@@ -979,20 +1237,31 @@ export default function AdminPage() {
                 };
             }
 
-            if (!groupsMap[groupKey].projects[row.project_name]) {
-                groupsMap[groupKey].projects[row.project_name] = {
+            // 對於重標註，項目鍵需要包含輪次和任務組
+            let projectKey = row.project_name;
+            if (progressTab === 'reannotation') {
+                const taskGroupLabel = row.task_group === 'group1' ? '組別1' : '組別2';
+                projectKey = `${row.project_name} - 第${row.round_number}輪 - ${taskGroupLabel}`;
+            }
+
+            if (!groupsMap[groupKey].projects[projectKey]) {
+                groupsMap[groupKey].projects[projectKey] = {
                     projectId: row.project_id,
                     projectName: row.project_name,
-                    totalTasks: parseInt(row.total_tasks),
+                    displayName: projectKey,
+                    roundNumber: row.round_number || 0,
+                    taskGroup: row.task_group || null,
+                    totalTasks: parseInt(row.total_tasks) || 0,
                     users: []
                 };
             }
 
-            groupsMap[groupKey].projects[row.project_name].users.push({
+            groupsMap[groupKey].projects[projectKey].users.push({
                 userId: row.user_id,
                 username: row.username,
                 role: row.role,
-                completedTasks: parseInt(row.completed_tasks)
+                totalTasks: parseInt(row.total_tasks) || 0,
+                completedTasks: parseInt(row.completed_tasks) || 0
             });
         });
 
@@ -1004,7 +1273,7 @@ export default function AdminPage() {
         return (
             <div className="container">
                 <div className="panel" style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                         <h1>📊 組別標註進度</h1>
                         <button
                             className="btn"
@@ -1012,6 +1281,44 @@ export default function AdminPage() {
                             style={{ background: '#6b7280', color: 'white' }}
                         >
                             返回管理頁面
+                        </button>
+                    </div>
+
+                    {/* 分頁按鈕 */}
+                    <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e5e7eb' }}>
+                        <button
+                            onClick={() => setProgressTab('initial')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: progressTab === 'initial' ? '#667eea' : 'transparent',
+                                color: progressTab === 'initial' ? 'white' : '#6b7280',
+                                fontWeight: progressTab === 'initial' ? 'bold' : 'normal',
+                                fontSize: '15px',
+                                cursor: 'pointer',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.3s',
+                                borderBottom: progressTab === 'initial' ? 'none' : '2px solid transparent'
+                            }}
+                        >
+                            📝 初次標註
+                        </button>
+                        <button
+                            onClick={() => setProgressTab('reannotation')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: progressTab === 'reannotation' ? '#667eea' : 'transparent',
+                                color: progressTab === 'reannotation' ? 'white' : '#6b7280',
+                                fontWeight: progressTab === 'reannotation' ? 'bold' : 'normal',
+                                fontSize: '15px',
+                                cursor: 'pointer',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.3s',
+                                borderBottom: progressTab === 'reannotation' ? 'none' : '2px solid transparent'
+                            }}
+                        >
+                            🔄 重標註
                         </button>
                     </div>
                 </div>
@@ -1022,7 +1329,7 @@ export default function AdminPage() {
                     let groupTotalCompleted = 0;
 
                     group.projects.forEach(project => {
-                        const projectTotal = project.totalTasks * project.users.length;
+                        const projectTotal = project.users.reduce((sum, u) => sum + u.totalTasks, 0);
                         const projectCompleted = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
                         groupTotalTasks += projectTotal;
                         groupTotalCompleted += projectCompleted;
@@ -1077,16 +1384,16 @@ export default function AdminPage() {
                             </div>
 
                             {group.projects.map(project => {
-                                // 計算專案進度
-                                const totalPossibleAnnotations = project.totalTasks * project.users.length;
+                                // 計算專案進度 - 每個用戶的任務數可能不同
+                                const totalPossibleAnnotations = project.users.reduce((sum, u) => sum + u.totalTasks, 0);
                                 const totalCompletedAnnotations = project.users.reduce((sum, u) => sum + u.completedTasks, 0);
-                                const overallPercentage = project.totalTasks > 0
+                                const overallPercentage = totalPossibleAnnotations > 0
                                     ? ((totalCompletedAnnotations / totalPossibleAnnotations) * 100).toFixed(1)
                                     : 0;
 
                                 return (
-                                    <div key={project.projectId} style={{ marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '8px' }}>
-                                        <h3 style={{ marginBottom: '15px', color: '#374151' }}>📁 {project.projectName}</h3>
+                                    <div key={project.projectId + '-' + (project.roundNumber || 0) + '-' + (project.taskGroup || '')} style={{ marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '8px' }}>
+                                        <h3 style={{ marginBottom: '15px', color: '#374151' }}>📁 {project.displayName || project.projectName}</h3>
                                         <div style={{
                                             background: '#f3f4f6',
                                             padding: '12px',
@@ -1128,8 +1435,8 @@ export default function AdminPage() {
                                             </thead>
                                             <tbody>
                                                 {project.users.map(user => {
-                                                    const percentage = project.totalTasks > 0
-                                                        ? ((user.completedTasks / project.totalTasks) * 100).toFixed(1)
+                                                    const percentage = user.totalTasks > 0
+                                                        ? ((user.completedTasks / user.totalTasks) * 100).toFixed(1)
                                                         : 0;
                                                     return (
                                                         <tr key={user.userId} style={{ borderBottom: '1px solid #eee' }}>
@@ -1146,7 +1453,7 @@ export default function AdminPage() {
                                                                 </span>
                                                             </td>
                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{user.completedTasks}</td>
-                                                            <td style={{ padding: '10px' }}>{project.totalTasks}</td>
+                                                            <td style={{ padding: '10px' }}>{user.totalTasks}</td>
                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{percentage}%</td>
                                                             <td style={{ padding: '10px' }}>
                                                                 <div style={{
@@ -1494,14 +1801,402 @@ export default function AdminPage() {
                     </button>
                     <button
                         className="btn"
+                        onClick={() => router.push('/admin/consistency-dashboard')}
+                        style={{ background: '#8b5cf6', color: 'white', marginRight: '10px' }}
+                    >
+                        📊 一致性儀表板
+                    </button>
+                    <button
+                        className="btn"
+                        onClick={async () => {
+                            if (confirm('確定要匯出所有標註資料（包含初次標註和重標註）？這會即時從資料庫查詢最新資料。')) {
+                                try {
+                                    window.open('/api/export-all-annotations?format=csv', '_blank');
+                                } catch (error) {
+                                    alert('匯出失敗: ' + error.message);
+                                }
+                            }
+                        }}
+                        style={{ background: '#10b981', color: 'white', marginRight: '10px' }}
+                    >
+                        📥 匯出所有標註資料
+                    </button>
+                    <button
+                        className="btn"
                         onClick={() => router.push('/admin/reannotation')}
                         style={{ background: '#f59e0b', color: 'white', marginRight: '10px' }}
                     >
                         🔄 重標註管理
                     </button>
+                    <button
+                        className="btn"
+                        onClick={handleCheckPdfIssues}
+                        disabled={isCheckingPdf}
+                        style={{ background: '#ef4444', color: 'white', marginRight: '10px' }}
+                    >
+                        {isCheckingPdf ? '⏳ 檢查中...' : '🔍 檢查 PDF 問題'}
+                    </button>
                     <button className="btn" onClick={() => router.push('/')}>返回標註</button>
                 </div>
             </div>
+
+            {/* PDF 問題檢查結果區塊 */}
+            {showPdfIssues && pdfIssuesData && (
+                <div className="panel" style={{marginBottom: '20px', background: '#fef2f2', borderLeft: '4px solid #ef4444'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                        <h2>🔍 PDF 載入問題檢查結果</h2>
+                        <button
+                            className="btn"
+                            onClick={() => setShowPdfIssues(false)}
+                            style={{background: '#6b7280', color: 'white'}}
+                        >
+                            關閉
+                        </button>
+                    </div>
+
+                    {/* 統計摘要 */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        gap: '15px',
+                        marginBottom: '25px'
+                    }}>
+                        <div style={{background: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center'}}>
+                            <div style={{fontSize: '28px', fontWeight: 'bold', color: '#3b82f6'}}>
+                                {pdfIssuesData.summary.totalProjects}
+                            </div>
+                            <div style={{fontSize: '14px', color: '#6b7280', marginTop: '5px'}}>總專案數</div>
+                        </div>
+                        <div style={{background: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center'}}>
+                            <div style={{fontSize: '28px', fontWeight: 'bold', color: '#10b981'}}>
+                                {pdfIssuesData.summary.projectsHealthy}
+                            </div>
+                            <div style={{fontSize: '14px', color: '#6b7280', marginTop: '5px'}}>正常專案</div>
+                        </div>
+                        <div style={{background: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center'}}>
+                            <div style={{fontSize: '28px', fontWeight: 'bold', color: '#ef4444'}}>
+                                {pdfIssuesData.summary.projectsWithIssues}
+                            </div>
+                            <div style={{fontSize: '14px', color: '#6b7280', marginTop: '5px'}}>有問題的專案</div>
+                        </div>
+                        <div style={{background: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center'}}>
+                            <div style={{fontSize: '28px', fontWeight: 'bold', color: '#f59e0b'}}>
+                                {Object.keys(pdfIssuesData.summary.issueTypes).length}
+                            </div>
+                            <div style={{fontSize: '14px', color: '#6b7280', marginTop: '5px'}}>問題類型數</div>
+                        </div>
+                    </div>
+
+                    {/* 問題類型統計 */}
+                    {Object.keys(pdfIssuesData.summary.issueTypes).length > 0 && (
+                        <div style={{marginBottom: '25px', background: 'white', padding: '15px', borderRadius: '8px'}}>
+                            <h3 style={{marginBottom: '15px'}}>問題類型統計</h3>
+                            <div style={{display: 'grid', gap: '10px'}}>
+                                {Object.entries(pdfIssuesData.summary.issueTypes).map(([type, count]) => {
+                                    const typeNames = {
+                                        'MISSING_PDF_URLS': '❌ 缺少 PDF URLs',
+                                        'INVALID_PDF_URLS_JSON': '⚠️ PDF URLs JSON 格式錯誤',
+                                        'EMPTY_PDF_URLS': '📭 PDF URLs 為空',
+                                        'INVALID_URLS': '🔗 無效的 URL 格式',
+                                        'NULL_SOURCE_URLS': '🚫 Source URL 為空',
+                                        'URL_MISMATCH': '⚡ URL 與預期不符'
+                                    };
+                                    return (
+                                        <div key={type} style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            padding: '10px',
+                                            background: '#f9fafb',
+                                            borderRadius: '6px',
+                                            borderLeft: '3px solid #ef4444'
+                                        }}>
+                                            <span>{typeNames[type] || type}</span>
+                                            <span style={{fontWeight: 'bold', color: '#ef4444'}}>{count} 個專案</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 問題專案詳細列表 */}
+                    {pdfIssuesData.issues.length === 0 ? (
+                        <div style={{background: '#d1fae5', padding: '20px', borderRadius: '8px', textAlign: 'center'}}>
+                            <div style={{fontSize: '48px', marginBottom: '10px'}}>✅</div>
+                            <div style={{fontSize: '18px', fontWeight: 'bold', color: '#059669'}}>
+                                太棒了！所有專案的 PDF 都正常運作
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <h3 style={{marginBottom: '15px', color: '#ef4444'}}>
+                                有問題的專案詳情 ({pdfIssuesData.issues.length})
+                            </h3>
+                            {pdfIssuesData.issues.map((issue, idx) => (
+                                <div key={idx} style={{
+                                    background: 'white',
+                                    padding: '15px',
+                                    borderRadius: '8px',
+                                    marginBottom: '15px',
+                                    border: '1px solid #fecaca'
+                                }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        marginBottom: '15px',
+                                        paddingBottom: '10px',
+                                        borderBottom: '2px solid #fee2e2'
+                                    }}>
+                                        <div>
+                                            <h4 style={{margin: 0, fontSize: '16px', color: '#1f2937'}}>
+                                                {issue.projectName}
+                                            </h4>
+                                            <div style={{fontSize: '12px', color: '#6b7280', marginTop: '5px'}}>
+                                                ID: {issue.projectId} | Page Offset: {issue.pageOffset || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                                            {/* 查看詳情按鈕 */}
+                                            <button
+                                                className="btn"
+                                                onClick={() => handleViewPdfUrls(issue.projectId, issue.projectName)}
+                                                style={{
+                                                    background: '#6b7280',
+                                                    color: 'white',
+                                                    padding: '5px 12px',
+                                                    fontSize: '12px'
+                                                }}
+                                            >
+                                                👁️ 查看詳情
+                                            </button>
+                                            {/* 檢查是否有可修復的問題 */}
+                                            {issue.problems.some(p =>
+                                                p.type === 'MISSING_PDF_URLS' ||
+                                                p.type === 'EMPTY_PDF_URLS' ||
+                                                p.type === 'NULL_SOURCE_URLS' ||
+                                                p.type === 'URL_MISMATCH'
+                                            ) && (
+                                                <>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleRebuildPdfUrls(issue.projectId, issue.projectName, false)}
+                                                        style={{
+                                                            background: '#3b82f6',
+                                                            color: 'white',
+                                                            padding: '5px 12px',
+                                                            fontSize: '12px'
+                                                        }}
+                                                        title="使用檔案名稱匹配（快速）"
+                                                    >
+                                                        📝 檔名修復
+                                                    </button>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={() => handleRebuildPdfUrls(issue.projectId, issue.projectName, true)}
+                                                        style={{
+                                                            background: '#8b5cf6',
+                                                            color: 'white',
+                                                            padding: '5px 12px',
+                                                            fontSize: '12px'
+                                                        }}
+                                                        title="使用內容智能匹配（更準確但較慢）"
+                                                    >
+                                                        🧠 智能修復
+                                                    </button>
+                                                </>
+                                            )}
+                                            <div style={{
+                                                background: '#fee2e2',
+                                                color: '#991b1b',
+                                                padding: '5px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '12px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {issue.problems.length} 個問題
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{display: 'grid', gap: '10px'}}>
+                                        {issue.problems.map((problem, pIdx) => (
+                                            <div key={pIdx} style={{
+                                                background: '#fef2f2',
+                                                padding: '12px',
+                                                borderRadius: '6px',
+                                                borderLeft: '3px solid #dc2626'
+                                            }}>
+                                                <div style={{fontWeight: 'bold', marginBottom: '5px', color: '#991b1b'}}>
+                                                    {problem.message}
+                                                </div>
+                                                {problem.affectedCount && (
+                                                    <div style={{fontSize: '13px', color: '#6b7280'}}>
+                                                        影響範圍: {problem.affectedCount} / {problem.totalCount} 筆資料
+                                                    </div>
+                                                )}
+                                                {problem.details && (
+                                                    <details style={{marginTop: '10px'}}>
+                                                        <summary style={{cursor: 'pointer', fontSize: '13px', color: '#3b82f6', fontWeight: 'bold'}}>
+                                                            📋 查看詳細資訊 ({Array.isArray(problem.details) ? problem.details.length : 1} 筆)
+                                                        </summary>
+                                                        <div style={{marginTop: '10px'}}>
+                                                            {problem.type === 'NULL_SOURCE_URLS' && Array.isArray(problem.details) ? (
+                                                                <div style={{
+                                                                    background: 'white',
+                                                                    borderRadius: '6px',
+                                                                    overflow: 'hidden',
+                                                                    border: '1px solid #e5e7eb'
+                                                                }}>
+                                                                    <table style={{width: '100%', fontSize: '12px', borderCollapse: 'collapse'}}>
+                                                                        <thead>
+                                                                            <tr style={{background: '#f9fafb', borderBottom: '2px solid #e5e7eb'}}>
+                                                                                <th style={{padding: '8px', textAlign: 'left', fontWeight: 'bold'}}>Source Data ID</th>
+                                                                                <th style={{padding: '8px', textAlign: 'left', fontWeight: 'bold'}}>Page Number</th>
+                                                                                <th style={{padding: '8px', textAlign: 'left', fontWeight: 'bold'}}>預期 PDF 頁碼</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {problem.details.map((item, idx) => (
+                                                                                <tr key={idx} style={{borderBottom: '1px solid #f3f4f6'}}>
+                                                                                    <td style={{padding: '8px', fontFamily: 'monospace'}}>{item.sourceDataId}</td>
+                                                                                    <td style={{padding: '8px', fontFamily: 'monospace'}}>{item.pageNumber}</td>
+                                                                                    <td style={{padding: '8px', fontFamily: 'monospace', color: '#ef4444'}}>
+                                                                                        {item.pageNumber + (issue.pageOffset || 0)}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            ) : (
+                                                                <pre style={{
+                                                                    background: 'white',
+                                                                    padding: '10px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '11px',
+                                                                    overflow: 'auto',
+                                                                    border: '1px solid #e5e7eb'
+                                                                }}>
+                                                                    {JSON.stringify(problem.details, null, 2)}
+                                                                </pre>
+                                                            )}
+                                                        </div>
+                                                    </details>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* PDF URLs 編輯器 */}
+            {showPdfEditor && editingPdfProject && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '12px',
+                        padding: '30px',
+                        maxWidth: '900px',
+                        width: '90%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
+                    }}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+                            <h2 style={{margin: 0}}>📝 編輯 PDF URLs</h2>
+                            <button
+                                className="btn"
+                                onClick={() => {
+                                    setShowPdfEditor(false);
+                                    setEditingPdfProject(null);
+                                    setEditingPdfUrls('');
+                                }}
+                                style={{background: '#6b7280', color: 'white'}}
+                            >
+                                ✕ 關閉
+                            </button>
+                        </div>
+
+                        <div style={{marginBottom: '20px', padding: '15px', background: '#f3f4f6', borderRadius: '8px'}}>
+                            <div><strong>專案名稱:</strong> {editingPdfProject.name}</div>
+                            <div><strong>專案 ID:</strong> {editingPdfProject.id}</div>
+                            <div><strong>Page Offset:</strong> {editingPdfProject.pageOffset || 0}</div>
+                        </div>
+
+                        <div style={{marginBottom: '15px'}}>
+                            <label style={{display: 'block', marginBottom: '8px', fontWeight: 'bold'}}>
+                                PDF URLs (JSON 格式)
+                            </label>
+                            <div style={{fontSize: '13px', color: '#6b7280', marginBottom: '10px'}}>
+                                格式說明: {`{"頁碼": "PDF URL", ...}`}<br/>
+                                範例: {`{"1": "https://...page_1.pdf", "2": "https://...page_2.pdf"}`}
+                            </div>
+                            <textarea
+                                value={editingPdfUrls}
+                                onChange={(e) => setEditingPdfUrls(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    minHeight: '400px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '13px',
+                                    padding: '12px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    resize: 'vertical'
+                                }}
+                                placeholder='{"1": "https://example.com/page_1.pdf", "2": "https://example.com/page_2.pdf"}'
+                            />
+                        </div>
+
+                        <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
+                            <button
+                                className="btn"
+                                onClick={() => {
+                                    setShowPdfEditor(false);
+                                    setEditingPdfProject(null);
+                                    setEditingPdfUrls('');
+                                }}
+                                style={{background: '#6b7280', color: 'white'}}
+                            >
+                                取消
+                            </button>
+                            <button
+                                className="btn"
+                                onClick={handleSavePdfUrls}
+                                style={{background: '#10b981', color: 'white'}}
+                            >
+                                💾 儲存
+                            </button>
+                        </div>
+
+                        <div style={{marginTop: '20px', padding: '12px', background: '#eff6ff', borderRadius: '6px', fontSize: '13px'}}>
+                            <strong>💡 提示:</strong>
+                            <ul style={{margin: '8px 0 0 20px', paddingLeft: 0}}>
+                                <li>頁碼必須是數字（不含引號內部）</li>
+                                <li>URL 必須是完整的 HTTPS URL</li>
+                                <li>修改後系統會自動更新所有 source_data 的 source_url</li>
+                                <li>可以使用線上 JSON 驗證器檢查格式</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 公告管理區塊 */}
             {showAnnouncementManagement && (
@@ -1732,10 +2427,123 @@ export default function AdminPage() {
                                 >
                                     🔍 掃描專案並建立公司記錄
                                 </button>
+                                <button
+                                    className="btn"
+                                    onClick={handleDiagnose}
+                                    disabled={isUploading}
+                                    style={{background: '#f59e0b', color: 'white', marginLeft: '10px'}}
+                                >
+                                    🔬 診斷重複公司記錄
+                                </button>
                                 {companies.length > 0 && (
                                     <p style={{marginTop: '10px', fontSize: '14px', color: '#10b981'}}>
                                         ✓ 已載入 {companies.length} 家公司
                                     </p>
+                                )}
+
+                                {/* 診斷結果顯示 */}
+                                {showDiagnostic && diagnosticResult && (
+                                    <div style={{marginTop: '20px', padding: '15px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #f59e0b'}}>
+                                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
+                                            <h4 style={{margin: 0}}>📊 診斷結果</h4>
+                                            <button
+                                                onClick={() => setShowDiagnostic(false)}
+                                                style={{background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer'}}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+
+                                        {/* 摘要 */}
+                                        <div style={{marginBottom: '15px', padding: '10px', background: 'white', borderRadius: '5px'}}>
+                                            <h5>📈 統計摘要</h5>
+                                            <ul style={{margin: '10px 0', paddingLeft: '20px', fontSize: '14px'}}>
+                                                <li>總公司記錄數: {diagnosticResult.summary.totalCompanies}</li>
+                                                <li>總專案數: {diagnosticResult.summary.totalProjects}</li>
+                                                <li style={{color: '#dc2626', fontWeight: 'bold'}}>
+                                                    重複組別數: {diagnosticResult.summary.duplicateGroups}
+                                                </li>
+                                                <li style={{color: '#dc2626', fontWeight: 'bold'}}>
+                                                    重複記錄總數: {diagnosticResult.summary.duplicateRecords}
+                                                </li>
+                                                <li style={{color: '#f59e0b'}}>
+                                                    孤立記錄數（無對應專案）: {diagnosticResult.summary.orphanRecords}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        {/* 重複記錄詳情 */}
+                                        {diagnosticResult.duplicates.length > 0 && (
+                                            <div style={{marginBottom: '15px'}}>
+                                                <h5 style={{color: '#dc2626'}}>⚠️ 重複的公司記錄</h5>
+                                                {diagnosticResult.duplicates.map((dup, idx) => (
+                                                    <div key={idx} style={{marginBottom: '15px', padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #fca5a5'}}>
+                                                        <div style={{fontWeight: 'bold', marginBottom: '8px'}}>
+                                                            {dup.groupName}_{dup.companyCode} ({dup.count} 筆重複)
+                                                        </div>
+                                                        {dup.hasProjects && (
+                                                            <div style={{fontSize: '12px', color: '#059669', marginBottom: '8px'}}>
+                                                                ✓ 對應專案: {dup.projectNames.join(', ')}
+                                                            </div>
+                                                        )}
+                                                        <table style={{width: '100%', fontSize: '12px', borderCollapse: 'collapse'}}>
+                                                            <thead>
+                                                                <tr style={{background: '#f9fafb'}}>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>ID</th>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>名稱</th>
+                                                                    <th style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>總記錄</th>
+                                                                    <th style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>已分配</th>
+                                                                    <th style={{padding: '5px', textAlign: 'left', border: '1px solid #e5e7eb'}}>建立時間</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {dup.companies.map(comp => (
+                                                                    <tr key={comp.id}>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>{comp.id}</td>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>{comp.name}</td>
+                                                                        <td style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>{comp.total_records}</td>
+                                                                        <td style={{padding: '5px', textAlign: 'right', border: '1px solid #e5e7eb'}}>{comp.assigned_records}</td>
+                                                                        <td style={{padding: '5px', border: '1px solid #e5e7eb'}}>
+                                                                            {new Date(comp.created_at).toLocaleString('zh-TW')}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* 孤立記錄 */}
+                                        {diagnosticResult.orphans.length > 0 && (
+                                            <div>
+                                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+                                                    <h5 style={{color: '#f59e0b', margin: 0}}>🔍 孤立的公司記錄（無對應專案）</h5>
+                                                    <button
+                                                        className="btn"
+                                                        onClick={handleCleanOrphans}
+                                                        disabled={isUploading}
+                                                        style={{
+                                                            background: '#dc2626',
+                                                            color: 'white',
+                                                            padding: '5px 15px',
+                                                            fontSize: '12px'
+                                                        }}
+                                                    >
+                                                        🗑️ 清理所有孤立記錄
+                                                    </button>
+                                                </div>
+                                                <ul style={{fontSize: '12px', margin: '10px 0', paddingLeft: '20px'}}>
+                                                    {diagnosticResult.orphans.map((orphan, idx) => (
+                                                        <li key={idx}>
+                                                            {orphan.groupName}_{orphan.companyCode} (ID: {orphan.company.id})
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
