@@ -200,24 +200,37 @@ export async function GET(request) {
                 '堅持答案', '重標註備註', '標註時間'
             ];
 
-            const csvRows = allAnnotations.map(ann => [
-                ann.group_name,
-                ann.project_name,
-                ann.annotation_type,
-                ann.round_number,
-                ann.task_group,
-                ann.source_data_id,
-                `"${(ann.original_data || '').replace(/"/g, '""')}"`,
-                ann.user_id,
-                ann.username,
-                ann.promise_status || '',
-                ann.verification_timeline || '',
-                ann.evidence_status || '',
-                ann.evidence_quality || '',
-                ann.persist_answer || '',
-                `"${(ann.reannotation_comment || '').replace(/"/g, '""')}"`,
-                ann.created_at ? new Date(ann.created_at).toLocaleString('zh-TW') : ''
-            ].join(','));
+            const csvRows = allAnnotations.map(ann => {
+                // 輔助函數：將欄位值轉換為 CSV 格式（處理引號和逗號）
+                const escapeCSV = (value) => {
+                    if (value === null || value === undefined) return '""';
+                    const str = String(value);
+                    // 如果包含逗號、引號或換行，就用雙引號包起來
+                    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                        return `"${str.replace(/"/g, '""')}"`;
+                    }
+                    return `"${str}"`;
+                };
+
+                return [
+                    escapeCSV(ann.group_name),
+                    escapeCSV(ann.project_name),
+                    escapeCSV(ann.annotation_type),
+                    escapeCSV(ann.round_number),
+                    escapeCSV(ann.task_group),
+                    escapeCSV(ann.source_data_id),
+                    escapeCSV(ann.original_data),
+                    escapeCSV(ann.user_id),
+                    escapeCSV(ann.username),
+                    escapeCSV(ann.promise_status || ''),
+                    escapeCSV(ann.verification_timeline || ''),
+                    escapeCSV(ann.evidence_status || ''),
+                    escapeCSV(ann.evidence_quality || ''),
+                    escapeCSV(ann.persist_answer || ''),
+                    escapeCSV(ann.reannotation_comment || ''),
+                    escapeCSV(ann.created_at ? new Date(ann.created_at).toLocaleString('zh-TW') : '')
+                ].join(',');
+            });
 
             const csv = [headers.join(','), ...csvRows].join('\n');
 
