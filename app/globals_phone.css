@@ -1,0 +1,710 @@
+/* 預設隱藏手機版專用元素 (在電腦版不顯示) */
+.mobile-reference-links,
+.mobile-content-wrapper,
+.mobile-back-arrow,
+.mobile-tabs {
+    display: none;
+}
+
+* { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
+}
+
+body { 
+    font-family: Arial, sans-serif; 
+    background: #f5f5f5; 
+    padding: 20px; 
+}
+
+.container { 
+    max-width: 1800px; 
+    margin: 0 auto; 
+}
+
+.header { 
+    background: white; 
+    padding: 20px; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+    margin-bottom: 20px; 
+}
+
+.header h1 { 
+    font-size: 24px; 
+    margin-bottom: 15px; 
+}
+
+.controls { 
+    display: flex; 
+    gap: 10px; 
+    flex-wrap: wrap; 
+    align-items: center; 
+}
+
+.btn { 
+    padding: 10px 20px; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 14px; 
+}
+
+.btn-primary { 
+    background: #3b82f6; 
+    color: white; 
+}
+
+.btn-purple { 
+    background: #8b5cf6; 
+    color: white; 
+}
+
+.btn-success { 
+    background: #10b981; 
+    color: white; 
+}
+
+.btn:hover { 
+    opacity: 0.9; 
+}
+
+.btn:disabled { 
+    opacity: 0.5; 
+    cursor: not-allowed; 
+}
+
+.progress { 
+    margin-top: 15px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    font-size: 14px; 
+    color: #666; 
+}
+
+.nav-btns { 
+    display: flex; 
+    gap: 10px; 
+}
+
+.nav-btn { 
+    padding: 8px 12px; 
+    background: #e5e7eb; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+}
+
+.content { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 20px; 
+}
+
+.content-top { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 20px; 
+}
+
+.panel { 
+    background: white; 
+    padding: 20px; 
+    border-radius: 8px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+}
+
+.panel h2 { 
+    font-size: 18px; 
+    margin-bottom: 15px; 
+}
+
+.text-area { 
+    padding: 15px; 
+    border: 2px solid #ddd; 
+    border-radius: 4px; 
+    min-height: 400px; 
+    line-height: 1.8; 
+    font-size: 14px; 
+    white-space: pre-wrap; 
+    word-wrap: break-word; 
+}
+
+.highlight-promise { 
+    background: #fef3c7; 
+}
+
+.highlight-evidence { 
+    background: #dbeafe; 
+}
+
+.field { 
+    margin-bottom: 15px; 
+}
+
+.field label { 
+    display: block; 
+    font-weight: 600; 
+    margin-bottom: 5px; 
+    font-size: 14px; 
+}
+
+.field select { 
+    width: 100%; 
+    padding: 8px; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+    font-size: 14px; 
+}
+
+.checkbox-group { 
+    display: flex; 
+    gap: 10px; 
+    flex-wrap: wrap; 
+}
+
+.checkbox-btn { 
+    padding: 8px 16px; 
+    border: 2px solid #ddd; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    background: white; 
+}
+
+.checkbox-btn.active { 
+    background: #3b82f6; 
+    color: white; 
+    border-color: #3b82f6; 
+}
+
+.highlight-btns { 
+    display: flex; 
+    gap: 10px; 
+    margin-top: 10px; 
+}
+
+.highlight-btn { 
+    padding: 6px 12px; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 13px; 
+}
+
+.highlight-btn-promise { 
+    background: #fbbf24; 
+    color: #000; 
+}
+
+.highlight-btn-evidence { 
+    background: #3b82f6; 
+    color: white; 
+}
+
+.highlight-btn-clear { 
+    background: #ef4444; 
+    color: white; 
+}
+
+.info-box { 
+    background: #e0f2fe; 
+    padding: 10px; 
+    border-radius: 4px; 
+    margin-bottom: 15px; 
+    font-size: 13px; 
+}
+
+.collapsible { 
+    background: #f3f4f6; 
+    border-radius: 4px; 
+    margin-bottom: 15px; 
+    border: 1px solid #d1d5db; 
+}
+
+.collapsible-header { 
+    padding: 10px 12px; 
+    cursor: pointer; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    user-select: none; 
+}
+
+.collapsible-header:hover { 
+    background: #e5e7eb; 
+}
+
+.collapsible-header label { 
+    font-weight: 600; 
+    font-size: 13px; 
+    color: #374151; 
+    margin: 0; 
+    cursor: pointer; 
+}
+
+.collapsible-header .toggle { 
+    font-size: 12px; 
+    color: #6b7280; 
+}
+
+.collapsible-content { 
+    padding: 0 12px 12px 12px; 
+}
+
+.collapsible-content.collapsed { 
+    display: none; 
+}
+
+.modal { 
+    display: none; 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0,0,0,0.5); 
+    z-index: 1000; 
+}
+
+.modal-content { 
+    background: white; 
+    margin: 150px auto; 
+    padding: 30px; 
+    width: 400px; 
+    border-radius: 8px; 
+}
+
+.modal-content h2 { 
+    margin-bottom: 15px; 
+}
+
+.modal-content input { 
+    width: 100%; 
+    padding: 10px; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+    margin-bottom: 15px; 
+}
+
+.modal-content button { 
+    width: 100%; 
+    padding: 10px; 
+    background: #3b82f6; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+}
+
+.pdf-status { 
+    background: #fef3c7; 
+    padding: 10px; 
+    border-radius: 4px; 
+    margin-bottom: 10px; 
+    font-size: 13px; 
+}
+
+.pdf-status.loaded { 
+    background: #d1fae5; 
+}
+
+#pdfContainer { 
+    position: relative; 
+    height: 700px; 
+    max-width: 100%; 
+    margin: 0 auto; 
+    overflow: auto; 
+    border: 2px solid #ddd; 
+    border-radius: 4px; 
+    background: #525252; 
+}
+
+#pdfCanvas { 
+    display: block; 
+    margin: 0 auto; 
+}
+
+.text-highlight-overlay { 
+    position: absolute; 
+    border: 3px solid #ff0000; 
+    background: rgba(255, 0, 0, 0.2); 
+    pointer-events: none; 
+    z-index: 10; 
+}
+
+.pdf-controls { 
+    display: flex; 
+    gap: 10px; 
+    margin-bottom: 10px; 
+    align-items: center; 
+    justify-content: center; 
+}
+
+.pdf-controls button { 
+    padding: 6px 12px; 
+    background: #3b82f6; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+}
+
+.pdf-controls span { 
+    font-size: 14px; 
+    color: #374151; 
+    font-weight: 600; 
+}
+
+@media (max-width: 1024px) { 
+    .content-bottom { 
+        grid-template-columns: 1fr; 
+    } 
+}
+
+.hint { 
+    font-size: 12px; 
+    color: #555; 
+    margin-top: 6px; 
+}
+
+.error { 
+    color:#b91c1c; 
+    font-weight: 600; 
+}
+
+/* 在您的 app/globals.css 或其他主要 CSS 檔案中加入 */
+.btn-emerald {
+  background-color: #059669; /* Emerald Green */
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-emerald:hover:not(:disabled) {
+  background-color: #047857;
+}
+
+.btn-emerald:disabled {
+  background-color: #a7f3d0; /* 淡綠色，表示禁用 */
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 新增的 btn-blue 樣式，用於儲存&下一筆按鈕 */
+.btn-blue {
+  background-color: #3b82f6; /* 亮藍色 */
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* 增加陰影使其更突出 */
+}
+
+.btn-blue:hover:not(:disabled) {
+  background-color: #2563eb;
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.25);
+}
+
+.btn-blue:disabled {
+  background-color: #93c5fd; /* 淡藍色，表示禁用 */
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+
+/* --- PDF 載入優化樣式 --- */
+
+.pdf-viewer-container {
+  position: relative; 
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 400px; /* 最小高度避免內容跳動 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-bottom: 10px;
+}
+
+.pdf-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.95); /* 輕微透明的白色疊層 */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10; /* 確保它在 PDF 內容之上 */
+  font-size: 1.2rem;
+  color: #374151;
+}
+
+/* 載入動畫 (Spinner) */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-top: 4px solid #3b82f6; /* 藍色，與按鈕顏色一致 */
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.page-info {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+/* 確保 PDF Viewer 在載入完成後能正常顯示 */
+.react-pdf__Document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.react-pdf__Page__canvas {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+/* ========================================
+   手機版響應式設計 (螢幕寬度 <= 768px)
+   ======================================== */
+
+@media (max-width: 768px) {
+    body {
+        padding: 0;
+    }
+
+    .container {
+        padding: 0;
+    }
+
+    /* 手機版顯示按鈕中的簡化文字 */
+    .hide-on-mobile + span {
+        display: inline !important;
+    }
+
+    /* --- 專案選擇頁面：參考資料連結 --- */
+    .mobile-reference-links {
+        display: flex;
+        flex-direction: row;      /* 改成水平排列 */
+        gap: 10px;                /* 按鈕之間的間距 */
+        margin-bottom: 20px;
+        margin-top: 5px;
+    }
+
+    .mobile-reference-links a {
+        flex: 1;                  /* 兩個按鈕平分寬度 (各50%) */
+        display: flex;            /* 使用 Flex 讓文字垂直水平置中 */
+        align-items: center;
+        justify-content: center;
+        
+        padding: 10px 5px;        /* 稍微減少左右 padding 避免空間不足 */
+        background: white;
+        color: #4b5563;
+        text-decoration: none;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        font-size: 13px;          /* 字體稍微縮小一點，確保兩行放得下 */
+        font-weight: 600;
+        text-align: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        line-height: 1.4;         /* 讓長標題換行時比較好看 */
+    }
+
+    /* --- 標註頁面：隱藏電腦版才有的按鈕 --- */
+    .hide-on-mobile {
+        display: none !important;
+    }
+
+    /* --- 標註頁面：header 調整 --- */
+    .header {
+        padding: 10px;
+        margin-bottom: 0;
+        border-radius: 0;
+    }
+
+    .header h1 {
+        font-size: 16px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .mobile-back-arrow {
+        display: inline-block;
+        font-size: 20px;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .controls {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .progress {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .progress > div {
+        width: 100%;
+    }
+
+    /* --- 手機版分頁工具列 --- */
+    .mobile-tabs {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 2px solid #e5e7eb;
+        display: flex;
+        justify-content: space-around;
+        z-index: 1000;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .mobile-tab {
+        flex: 1;
+        padding: 12px 8px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        border: none;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mobile-tab.active {
+        color: #3b82f6;
+        background: #eff6ff;
+        border-top: 3px solid #3b82f6;
+    }
+
+    /* --- 手機版內容區域 --- */
+    .mobile-content-wrapper {
+        display: block;       /* 覆蓋預設的 display: none */
+        padding-bottom: 60px; /* 為底部工具列留空間 */
+    }
+
+    .mobile-tab-content {
+        display: none;
+        padding: 15px;
+    }
+
+    .mobile-tab-content.active {
+        display: block;
+    }
+
+    /* --- 電腦版佈局在手機上隱藏 --- */
+    .content,
+    .content-top {
+        display: none;
+    }
+
+    /* --- 手機版文本區域 --- */
+    .text-area {
+        min-height: 300px;
+        font-size: 15px;
+        line-height: 1.6;
+    }
+
+    /* --- 手機版按鈕調整 --- */
+    .nav-btns {
+        display: flex;
+        flex-wrap: nowrap;  /* ✅ 改成不換行 */
+        width: 100%;
+        gap: 6px;           /* 按鈕間距縮小 */
+    }
+
+    /* 針對所有按鈕先做重置 */
+    .nav-btns .btn, 
+    .nav-btns .btn-emerald {
+        min-width: auto;    /* ✅ 移除原本的 45% 限制 */
+        padding: 8px 0;     /* 減少左右內距 */
+        height: 42px;       /* 固定高度讓視覺整齊 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* 設定小按鈕：標記(☆)、上一筆(←)、跳過(⏭️) */
+    /* 邏輯：選取不是「儲存」的所有按鈕 */
+    .nav-btns .btn:not(.btn-emerald) {
+        flex: 0 0 46px;     /* ✅ 固定寬度 46px，剛好放得下 Icon */
+        font-size: 18px;    /* Icon稍微大一點 */
+    }
+
+    /* 設定大按鈕：儲存 & 下一筆 */
+    .nav-btns .btn-emerald {
+        flex: 1;            /* ✅ 佔據剩餘所有空間 */
+        font-size: 14px;
+        font-weight: bold;
+        padding: 0 10px;    /* 文字左右留一點空間 */
+    }
+
+    /* --- 手機版下拉選單 --- */
+    .progress select {
+        font-size: 13px;
+        padding: 6px 8px;
+    }
+
+    /* --- 手機版 PDF 容器 --- */
+    #pdfContainer {
+        height: 500px;
+    }
+
+    /* --- 手機版面板 --- */
+    .panel {
+        padding: 15px;
+        border-radius: 0;
+        box-shadow: none;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .panel h2 {
+        font-size: 16px;
+        margin-bottom: 12px;
+    }
+
+    /* --- 手機版總覽頁面 --- */
+    .mobile-overview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 15px;
+    }
+}
