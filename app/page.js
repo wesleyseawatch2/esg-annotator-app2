@@ -1092,6 +1092,9 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             return;
         }
 
+        // 存檔成功後，立刻重新抓取列表，即時更新重標註頁面狀態燈號與一致性分數
+        await fetchProjectReannotationTasks();
+
         // 清除所有標記（切換到下一筆時重置）
         if (dataTextRef.current && currentItem) {
             dataTextRef.current.innerHTML = currentItem.original_data;
