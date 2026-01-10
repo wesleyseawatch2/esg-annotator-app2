@@ -626,7 +626,7 @@ export async function saveAnnotation(data) {
 export async function getReannotationHistory(sourceDataId, userId) {
   try {
     const { rows } = await sql`
-      SELECT changed_at, task_name, old_value, new_value
+      SELECT changed_at, task_name, old_value, new_value, round_number
       FROM reannotation_audit_log
       WHERE source_data_id = ${sourceDataId}
       AND user_id = ${userId}

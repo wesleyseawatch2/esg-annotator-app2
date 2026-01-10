@@ -777,6 +777,14 @@ function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
 function HistoryModal({ isOpen, onClose, history, loading }) {
     if (!isOpen) return null;
 
+    // 輔助函式：將輪次數字轉為易讀文字
+    const getRoundLabel = (round) => {
+        if (!round || round === 0) return '初次標註';
+        if (round === 1) return '第一輪重標';
+        if (round === 2) return '第二輪重標';
+        return `第 ${round} 輪重標`;
+    };
+
     return (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -785,11 +793,12 @@ function HistoryModal({ isOpen, onClose, history, loading }) {
         }} onClick={onClose}>
             <div style={{
                 background: 'white', padding: '20px', borderRadius: '8px',
-                width: '600px', maxHeight: '80vh', overflowY: 'auto',
+                width: '750px',
+                maxHeight: '80vh', overflowY: 'auto',
                 boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }} onClick={e => e.stopPropagation()}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                    <h3 style={{ margin: 0 }}>📜 標註修改歷史紀錄</h3>
+                    <h3 style={{ margin: 0 }}>📜 標註歷史紀錄</h3>
                     <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
                 </div>
 
@@ -801,21 +810,38 @@ function HistoryModal({ isOpen, onClose, history, loading }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                         <thead>
                             <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>時間</th>
+                                {/* 階段欄位 */}
+                                <th style={{ padding: '8px', textAlign: 'left', width: '110px' }}>階段</th>
+                                <th style={{ padding: '8px', textAlign: 'left', width: '155px' }}>時間</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>變更欄位</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>舊值</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>新值</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {history.map((log, idx) => (
-                                <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                                    <td style={{ padding: '8px', color: '#6b7280', fontSize: '12px' }}>{log.changed_at}</td>
-                                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{log.task_name}</td>
-                                    <td style={{ padding: '8px', color: '#ef4444' }}>{log.old_value || '(空)'}</td>
-                                    <td style={{ padding: '8px', color: '#10b981' }}>{log.new_value}</td>
-                                </tr>
-                            ))}
+                            {history.map((log, idx) => {
+                                // 計算序號：總筆數 - 目前索引 = 第 N 次
+                                const seqNumber = history.length - idx;
+                                
+                                return (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                        {/* 顯示「第 N 次標註」 */}
+                                        <td style={{ padding: '8px' }}>
+                                            <span style={{ 
+                                                background: '#e0f2fe', color: '#0369a1', 
+                                                padding: '2px 8px', borderRadius: '10px', fontSize: '12px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                第 {seqNumber} 次標註
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '8px', color: '#6b7280', fontSize: '12px' }}>{log.changed_at}</td>
+                                        <td style={{ padding: '8px', fontWeight: 'bold' }}>{log.task_name}</td>
+                                        <td style={{ padding: '8px', color: '#ef4444' }}>{log.old_value || '(空)'}</td>
+                                        <td style={{ padding: '8px', color: '#10b981' }}>{log.new_value}</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
