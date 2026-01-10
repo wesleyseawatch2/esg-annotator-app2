@@ -331,10 +331,10 @@ function LoginRegisterScreen({ onLoginSuccess }) {
 function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [reannotationCount, setReannotationCount] = useState(0);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false); // 控制彈窗
   const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);            // 記錄已讀公告的 ID
   const [isAnnouncementsLoading, setIsAnnouncementsLoading] = useState(true);    // 公告載入狀態，預設為 true
+  const [reannotationCount, setReannotationCount] = useState(0);
 
   useEffect(() => {
     async function fetchProjects() {
@@ -489,44 +489,6 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                 </div>
             </button>
         </div>
-
-        {/* 重標註任務提示 */}
-        {reannotationCount > 0 && (
-          <div style={{
-            padding: '15px',
-            marginBottom: '20px',
-            background: '#fef3c7',
-            border: '2px solid #f59e0b',
-            borderRadius: '8px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'start' }}>
-              <span style={{ fontSize: '20px', marginRight: '10px' }}>🔄</span>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
-                  你有 {reannotationCount} 個重標註任務待處理
-                </h3>
-                <p style={{ margin: 0, fontSize: '14px', marginBottom: '10px' }}>
-                  管理員發現部分標註的一致性較低，需要您重新檢視並修改。
-                </p>
-                <Link
-                  href="/reannotation"
-                  style={{
-                    display: 'inline-block',
-                    padding: '8px 16px',
-                    background: '#f59e0b',
-                    color: 'white',
-                    borderRadius: '6px',
-                    textDecoration: 'none',
-                    fontSize: '14px',
-                    fontWeight: '600'
-                  }}
-                >
-                  前往處理重標註任務 →
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
 
         <p>請選擇要標註的公司專案:</p>
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '20px' }}>
@@ -831,6 +793,19 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const [batchAlignProgress, setBatchAlignProgress] = useState(null);
     const [showBatchResult, setShowBatchResult] = useState(false);
     const dataTextRef = useRef(null);
+    const [reannotationList, setReannotationList] = useState([]);
+    const [loadingReannotation, setLoadingReannotation] = useState(false);
+
+    // --- 輔助函式：去除重複的任務 (根據 ID) ---
+    const getUniqueTasks = (tasks) => {
+        if (!Array.isArray(tasks)) return [];
+        const seen = new Set();
+        return tasks.filter(task => {
+            const duplicate = seen.has(task.id);
+            seen.add(task.id);
+            return !duplicate;
+        });
+    };
 
     useEffect(() => { loadTask(); }, []);
 
@@ -857,9 +832,6 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             } else {
                 dataTextRef.current.innerHTML = currentItem.original_data;
             }
-        } else if (currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0) {
-            // 只有在真正完成所有標註時（已完成 + 已跳過 = 總題數），才自動執行驗證
-            handleValidateData();
         }
     }, [currentItem, progress, skippedCount]);
 
@@ -884,9 +856,12 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
         if (allTasksRes.tasks) {
-            setAllTasks(allTasksRes.tasks);
-            // 計算跳過數量
-            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
+            // 先去重再設定 State
+            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
+            setAllTasks(uniqueTasks);
+            
+            // 計算跳過數量 (也要用去重後的資料算才準確)
+            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
             setSkippedCount(skipped);
         }
     };
@@ -951,6 +926,36 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             }
         }
     };
+
+    // 抓取該專案重標註任務的函式
+    const fetchProjectReannotationTasks = async () => {
+        setLoadingReannotation(true);
+        try {
+            // 呼叫 Next.js API（app/api/consistency/route.js）
+            const response = await fetch(`/api/consistency?projectId=${project.id}&userId=${user.id}`);
+            const result = await response.json();
+            
+            if (result.success && Array.isArray(result.tasks)) {
+                // 將計算結果存入 State
+                setReannotationList(result.tasks);
+                console.log("Project Global Alphas:", result.global_alphas);
+            } else {
+                setReannotationList([]);
+            }
+        } catch (error) {
+            console.error('載入重標註列表失敗:', error);
+            setReannotationList([]);
+        }
+        setLoadingReannotation(false);
+    };
+
+    useEffect(() => {
+        const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
+        
+        if (isProjectCompleted) {
+            fetchProjectReannotationTasks();
+        }
+    }, [currentItem, progress, skippedCount]); // 監聽這些變數變化
 
     const handleSaveAndNext = async () => {
         if (!currentItem) return;
@@ -1023,8 +1028,11 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 重新載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
         if (allTasksRes.tasks) {
-            setAllTasks(allTasksRes.tasks);
-            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
+            // 先去重
+            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
+            setAllTasks(uniqueTasks);
+            
+            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
             setSkippedCount(skipped);
         }
 
@@ -1089,8 +1097,11 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 重新載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
         if (allTasksRes.tasks) {
-            setAllTasks(allTasksRes.tasks);
-            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
+            // 先去重
+            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
+            setAllTasks(uniqueTasks);
+            
+            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
             setSkippedCount(skipped);
         }
 
@@ -1820,8 +1831,24 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         container.innerHTML = newHTML;
     };
 
-    const toggleEsgType = (type) => setEsgTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+    // 一鍵清除所有標記
+    const clearAllHighlights = () => {
+        if (!dataTextRef.current || !currentItem) return;
 
+        // 1. 將內容還原為原始資料 (移除所有 span 標籤)
+        dataTextRef.current.innerHTML = currentItem.original_data;
+
+        // 2. 清空紀錄的字串狀態
+        setPromiseString('');
+        setEvidenceString('');
+        
+        // 3. 清除當前的瀏覽器選取範圍
+        const selection = window.getSelection();
+        if (selection) selection.removeAllRanges();
+    };
+
+    const toggleEsgType = (type) => setEsgTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+    
     useEffect(() => { if (promiseStatus === 'No') { setVerificationTimeline('N/A'); setEvidenceStatus('N/A'); } }, [promiseStatus]);
     useEffect(() => { if (evidenceStatus !== 'Yes') setEvidenceQuality('N/A'); }, [evidenceStatus]);
 
@@ -1847,8 +1874,47 @@ return (
                     <button onClick={handleResetProject} className="btn" style={{ background: '#dc2626', color: 'white', marginLeft: '10px' }}>
                         🔄 重置專案
                     </button>
-                    <span style={{ marginLeft: 'auto', fontWeight: 'bold' }}>標註者: {user.username}</span>
+                    {/* 右側使用者資訊區 */}
+                    <div style={{ 
+                        marginLeft: 'auto', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'flex-end',
+                        marginTop: '10px',
+                        position: 'relative'
+                    }}>
+                        {/* 顯示條件：當專案已完成 (進度100%) 且 目前不在完成頁面 (currentItem不為null) 時顯示 */}
+                        {(progress.completed + skippedCount >= progress.total) && currentItem !== null && (
+                            <button
+                                onClick={() => setCurrentItem(null)} 
+                                style={{
+                                    position: 'absolute',  // 絕對定位：浮在上方
+                                    top: '-45px',          // 往上移動
+                                    right: 0,              // 靠右對齊
+                                    background: '#f59e0b',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '10px 18px',   // 內距：按鈕高度與寬度
+                                    fontSize: '14px',      // 按鈕文字大小
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                返回重標註清單 🚀
+                            </button>
+                        )}
+                        <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
+                            標註者: {user.username}
+                        </span>
+                    </div>
                 </div>
+
                 {/* --- 按鈕與參考資料 --- */}
                 <div className="progress" style={{ 
                     display: 'flex', 
@@ -1866,11 +1932,6 @@ return (
                         {/* 1. 個人進度 */}
                         <div style={{ fontSize: '14px', color: '#4b5563', fontWeight: '500' }}>
                             您的個人進度: {progress.completed} / {progress.total}
-                            {skippedCount > 0 && (
-                                <span style={{ color: '#f59e0b', fontWeight: 'bold', marginLeft: '8px' }}>
-                                    ⚠️ {skippedCount} 待補
-                                </span>
-                            )}
                         </div>
 
                         {/* 2. 跳轉選單 */}
@@ -1922,14 +1983,14 @@ return (
                             paddingRight: '20px'
                         }}>
                             <span style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📚 參考資源：
+                                📚 參考資料：
                             </span>
                             <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
                                 📖 AI CUP 標註手冊 V2
                             </a>
                             <span style={{ color: '#cbd5e1' }}>|</span>
                             <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📊 系統教學投影片（20251210版）
+                                📊 系統教學投影片（20260108版）
                             </a>
                         </div>
 
@@ -2061,14 +2122,116 @@ return (
 
             {currentItem === undefined && <div className="panel"><h2>讀取中...</h2></div>}
             {currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0 && (
-                <div className="panel">
-                    <h2>🎉 恭喜！您已完成此專案的所有標註！</h2>
-                    <p style={{ marginTop: '20px', fontSize: '16px', color: '#666' }}>
-                        請點擊「<strong style={{ color: '#3b82f6' }}>✓ 驗證資料完整性</strong>」按鈕確保所有資料都是完整的。
-                    </p>
-                    <p style={{ marginTop: '10px', fontSize: '16px', color: '#666' }}>
-                        您也可以點擊「← 上一筆」按鈕返回查看或修改已標註的項目。
-                    </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    
+                    {/* 1. 恭喜訊息 Panel */}
+                    <div className="panel" style={{ borderLeft: '5px solid #10b981' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '24px' }}>🎉</span>
+                            <div>
+                                <h2 style={{ margin: 0, color: '#064e3b' }}>恭喜！您已完成此專案的所有標註！</h2>
+                                <p style={{ margin: '5px 0 0 0', color: '#6b7280' }}>
+                                    請點擊「<strong style={{ color: '#3b82f6' }}>✓ 驗證資料完整性</strong>」按鈕確保所有資料都是完整的。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. 重標註任務列表 (如果有資料才顯示) */}
+                    {reannotationList.length > 0 && (
+                        <div className="reannotation-container">
+                            <div className="reannotation-header">
+                                <h3>📋 重標註項目 ({reannotationList.length} 筆)</h3>
+                                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                                    以下資料的一致性分數較低，建議您重新檢視
+                                </span>
+                            </div>
+                            
+                            <div style={{ overflowX: 'auto' }}>
+                            <table className="re-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '90px' }}>狀態</th>
+                                        <th style={{ width: '110px' }}>資料</th>
+                                        <th>文本</th>
+                                        <th style={{ width: '120px', fontSize: '12px' }}>承諾狀態</th>
+                                        <th style={{ width: '120px', fontSize: '12px' }}>驗證時間</th>
+                                        <th style={{ width: '120px', fontSize: '12px' }}>證據狀態</th>
+                                        <th style={{ width: '120px', fontSize: '12px' }}>證據品質</th>
+                                        <th style={{ width: '150px' }}>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reannotationList.map((task, index) => {
+                                        // 輔助函式：分數樣式 (維持原本邏輯，低分紅字)
+                                        const getScoreStyle = (score) => ({
+                                            fontWeight: '700',
+                                            fontFamily: 'monospace',
+                                            color: score < 0.6 ? '#ef4444' : '#94a3b8'
+                                        });
+                                        const fmt = (n) => (typeof n === 'number' ? n.toFixed(2) : '-');
+
+                                        return (
+                                            <tr key={task.id || index}>
+                                                <td data-label="狀態">
+                                                    {/* 燈號邏輯：已檢視 = 綠燈、未檢視 = 紅燈 */}
+                                                    <span className={`status-dot ${task.is_reviewed ? 'green' : 'red'}`}></span>
+                                                </td>
+                                                <td data-label="資料">
+                                                    <strong>第 {task.sequence} 筆</strong>
+                                                </td>
+                                                <td data-label="文本">
+                                                    <div className="text-preview" title={task.preview_text}>
+                                                        {task.preview_text}
+                                                    </div>
+                                                </td>
+                                                
+                                                {/* 顯示四個細項分數 */}
+                                                <td data-label="承諾狀態分">
+                                                    <span style={getScoreStyle(task.s_promise)}>{fmt(task.s_promise)}</span>
+                                                </td>
+                                                <td data-label="驗證時間分">
+                                                    <span style={getScoreStyle(task.s_timeline)}>{fmt(task.s_timeline)}</span>
+                                                </td>
+                                                <td data-label="證據狀態分">
+                                                    <span style={getScoreStyle(task.s_evidence)}>{fmt(task.s_evidence)}</span>
+                                                </td>
+                                                <td data-label="證據品質分">
+                                                    <span style={getScoreStyle(task.s_quality)}>{fmt(task.s_quality)}</span>
+                                                </td>
+
+                                                <td data-label="操作">
+                                                {/* 按鈕樣式與文字邏輯 */}
+                                                <button 
+                                                    className="btn-reannotate"
+                                                    style={{
+                                                        // 透過 inline style 覆蓋原本的橘色背景
+                                                        // 已檢視 -> 綠色 (#10b981), 未檢視 -> 橘色 (#f59e0b)
+                                                        backgroundColor: task.is_reviewed ? '#10b981' : '#f59e0b',
+                                                        transition: 'background-color 0.3s'
+                                                    }}
+                                                    onClick={() => {
+                                                        handleSequenceJump({ target: { value: task.sequence } });
+                                                    }}
+                                                >
+                                                    {task.is_reviewed ? '再次檢視' : '重標註'}
+                                                </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                    {/* 無重標註資料時的提示 */}
+                    {reannotationList.length === 0 && !loadingReannotation && (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+                            沒有需要重標註的任務，辛苦了👍！
+                        </div>
+                    )}
                 </div>
             )}
             {currentItem === null && !(progress.completed + skippedCount >= progress.total && progress.total > 0) && (
@@ -2097,13 +2260,63 @@ return (
                 <div className="content">
                     <div className="content-top">
                         <div className="panel">
-                            <h2>文本內容 (ID: {currentItem.id}, 頁碼: {currentItem.page_number})</h2>
-                            <div className="info-box">用滑鼠選取文字後點擊下方按鈕: 黃色=承諾 / 藍色=證據 / 清除標記=橡皮擦（只清除選取的標記）</div>
+                            <h2>
+                                第 {allTasks.find(t => t.id === currentItem.id)?.sequence || '-'} 筆文本內容
+                                （ID：{currentItem.id}, 頁碼：{currentItem.page_number}）
+                            </h2>
+                            <div className="info-box">用滑鼠選取文字後點擊下方按鈕: 黃色=承諾 / 藍色=證據 / 清除選取標記=橡皮擦（只清除選取的標記）</div>
                             <div ref={dataTextRef} className="text-area"></div>
-                            <div className="highlight-btns">
-                                <button className="highlight-btn highlight-btn-promise" onClick={() => highlightSelection('promise')}>標記承諾</button>
-                                <button className="highlight-btn highlight-btn-evidence" onClick={() => highlightSelection('evidence')}>標記證據</button>
-                                <button className="highlight-btn highlight-btn-clear" onClick={clearSelectedHighlights}>清除標記</button>
+                            {/* 螢光筆工具列 */}
+                            <div className="btn-group" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span style={{ fontWeight: 'bold', marginRight: '5px', fontSize: '14px' }}>
+                                    選取後標記：
+                                </span>
+                                <button
+                                    className="btn" 
+                                    style={{
+                                        backgroundColor: '#f9f2d2ff',
+                                        color: '#282828ff',
+                                        border: '1px solid #eab308',
+                                        fontWeight: '600'
+                                    }}
+                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('promise'); }}
+                                >
+                                    承諾語句
+                                </button>
+                                <button
+                                    className="btn"
+                                    style={{
+                                        backgroundColor: '#bae6fd',
+                                        color: '#282828ff',
+                                        border: '1px solid #79b3faff',
+                                        fontWeight: '600'
+                                    }}
+                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('evidence'); }}
+                                >
+                                    證據語句
+                                </button>
+
+                                <button
+                                    className="btn btn-secondary"
+                                    onMouseDown={(e) => { e.preventDefault(); removeHighlight(); }}
+                                    title="請先選取要清除的標記文字範圍，再點擊此按鈕"
+                                >
+                                    清除選取標記
+                                </button>
+
+                                {/* 右側全部清除按鈕 (維持原本樣式，但功能已更新為不跳彈窗) */}
+                                <button
+                                    className="btn"
+                                    style={{ 
+                                        backgroundColor: '#ef4444', 
+                                        color: 'white', 
+                                        marginLeft: '10px' 
+                                    }}
+                                    onMouseDown={(e) => { e.preventDefault(); clearAllHighlights(); }}
+                                    title="不用選取，直接移除所有顏色"
+                                >
+                                    全部清除
+                                </button>
                             </div>
                         </div>
                         <div className="panel">

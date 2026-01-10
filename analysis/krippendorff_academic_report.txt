@@ -1,0 +1,1411 @@
+﻿Krippendorff's Alpha 學術級詳細計算日誌
+============================================================
+【組1 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(51.0), np.float64(38.0)]
+           [np.float64(38.0), np.float64(125.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 76.0000
+       期望衝突值 (De) = 115.5936
+       Alpha = 1 - (76.0000 / 115.5936) = 0.3425
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(27.0), np.float64(12.5), np.float64(10.5), np.float64(20.0), np.float64(2.0)]
+           [np.float64(12.5), np.float64(4.0), np.float64(11.5), np.float64(8.5), np.float64(1.5)]
+           [np.float64(10.5), np.float64(11.5), np.float64(18.0), np.float64(8.0), np.float64(0.0)]
+           [np.float64(20.0), np.float64(8.5), np.float64(8.0), np.float64(51.0), np.float64(1.5)]
+           [np.float64(2.0), np.float64(1.5), np.float64(0.0), np.float64(1.5), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 152.0000
+       期望衝突值 (De) = 185.7610
+       Alpha = 1 - (152.0000 / 185.7610) = 0.1817
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(5.0), np.float64(8.5), np.float64(6.5)]
+           [np.float64(8.5), np.float64(103.0), np.float64(31.5)]
+           [np.float64(6.5), np.float64(31.5), np.float64(51.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 93.0000
+       期望衝突值 (De) = 138.3825
+       Alpha = 1 - (93.0000 / 138.3825) = 0.3279
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(65.0), np.float64(1.5), np.float64(12.0), np.float64(27.5)]
+           [np.float64(1.5), np.float64(0.0), np.float64(0.0), np.float64(0.5)]
+           [np.float64(12.0), np.float64(0.0), np.float64(11.0), np.float64(12.0)]
+           [np.float64(27.5), np.float64(0.5), np.float64(12.0), np.float64(69.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 107.0000
+       期望衝突值 (De) = 156.0080
+       Alpha = 1 - (107.0000 / 156.0080) = 0.3141
+
+【組1 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(92.0), np.float64(64.0)]
+           [np.float64(64.0), np.float64(128.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 128.0000
+       期望衝突值 (De) = 172.6340
+       Alpha = 1 - (128.0000 / 172.6340) = 0.2585
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(19.0), np.float64(6.0), np.float64(12.0), np.float64(24.0), np.float64(2.0)]
+           [np.float64(6.0), np.float64(12.0), np.float64(9.5), np.float64(18.0), np.float64(0.5)]
+           [np.float64(12.0), np.float64(9.5), np.float64(35.0), np.float64(16.0), np.float64(0.5)]
+           [np.float64(24.0), np.float64(18.0), np.float64(16.0), np.float64(92.0), np.float64(6.0)]
+           [np.float64(2.0), np.float64(0.5), np.float64(0.5), np.float64(6.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 189.0000
+       期望衝突值 (De) = 245.6888
+       Alpha = 1 - (189.0000 / 245.6888) = 0.2307
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(11.0), np.float64(16.5), np.float64(21.5)]
+           [np.float64(16.5), np.float64(84.0), np.float64(42.5)]
+           [np.float64(21.5), np.float64(42.5), np.float64(92.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 161.0000
+       期望衝突值 (De) = 213.0202
+       Alpha = 1 - (161.0000 / 213.0202) = 0.2442
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(58.0), np.float64(0.5), np.float64(7.5), np.float64(25.0)]
+           [np.float64(0.5), np.float64(0.0), np.float64(0.5), np.float64(2.0)]
+           [np.float64(7.5), np.float64(0.5), np.float64(9.0), np.float64(32.0)]
+           [np.float64(25.0), np.float64(2.0), np.float64(32.0), np.float64(146.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 135.0000
+       期望衝突值 (De) = 197.0836
+       Alpha = 1 - (135.0000 / 197.0836) = 0.3150
+
+【組1 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(70.0), np.float64(31.0)]
+           [np.float64(31.0), np.float64(168.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 62.0000
+       期望衝突值 (De) = 134.4415
+       Alpha = 1 - (62.0000 / 134.4415) = 0.5388
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(40.0), np.float64(35.5), np.float64(1.0), np.float64(18.5), np.float64(0.0)]
+           [np.float64(35.5), np.float64(2.0), np.float64(8.5), np.float64(11.0), np.float64(1.0)]
+           [np.float64(1.0), np.float64(8.5), np.float64(33.0), np.float64(1.5), np.float64(0.0)]
+           [np.float64(18.5), np.float64(11.0), np.float64(1.5), np.float64(70.0), np.float64(0.0)]
+           [np.float64(0.0), np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 154.0000
+       期望衝突值 (De) = 218.9632
+       Alpha = 1 - (154.0000 / 218.9632) = 0.2967
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(5.0), np.float64(12.5), np.float64(2.5)]
+           [np.float64(12.5), np.float64(138.0), np.float64(28.5)]
+           [np.float64(2.5), np.float64(28.5), np.float64(70.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 87.0000
+       期望衝突值 (De) = 158.3880
+       Alpha = 1 - (87.0000 / 158.3880) = 0.4507
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(79.0), np.float64(20.5), np.float64(20.5)]
+           [np.float64(20.5), np.float64(18.0), np.float64(20.5)]
+           [np.float64(20.5), np.float64(20.5), np.float64(80.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 123.0000
+       期望衝突值 (De) = 192.2341
+       Alpha = 1 - (123.0000 / 192.2341) = 0.3602
+
+【組1 | 第4週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(58.0), np.float64(37.0)]
+           [np.float64(37.0), np.float64(168.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 74.0000
+       期望衝突值 (De) = 130.2676
+       Alpha = 1 - (74.0000 / 130.2676) = 0.4319
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(42.0), np.float64(33.5), np.float64(6.5), np.float64(26.0), np.float64(4.0)]
+           [np.float64(33.5), np.float64(6.0), np.float64(6.5), np.float64(8.5), np.float64(2.5)]
+           [np.float64(6.5), np.float64(6.5), np.float64(11.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(26.0), np.float64(8.5), np.float64(1.0), np.float64(58.0), np.float64(1.5)]
+           [np.float64(4.0), np.float64(2.5), np.float64(0.0), np.float64(1.5), np.float64(3.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 180.0000
+       期望衝突值 (De) = 215.5050
+       Alpha = 1 - (180.0000 / 215.5050) = 0.1648
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(7.0), np.float64(12.0), np.float64(4.0)]
+           [np.float64(12.0), np.float64(137.0), np.float64(33.0)]
+           [np.float64(4.0), np.float64(33.0), np.float64(58.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 98.0000
+       期望衝突值 (De) = 158.2676
+       Alpha = 1 - (98.0000 / 158.2676) = 0.3808
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(80.0), np.float64(22.0), np.float64(20.0)]
+           [np.float64(22.0), np.float64(13.0), np.float64(25.0)]
+           [np.float64(20.0), np.float64(25.0), np.float64(73.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 134.0000
+       期望衝突值 (De) = 192.6154
+       Alpha = 1 - (134.0000 / 192.6154) = 0.3043
+
+【組2 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(73.0), np.float64(31.0)]
+           [np.float64(31.0), np.float64(165.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 62.0000
+       期望衝突值 (De) = 136.3478
+       Alpha = 1 - (62.0000 / 136.3478) = 0.5453
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(64.0), np.float64(16.5), np.float64(7.0), np.float64(23.5), np.float64(3.0)]
+           [np.float64(16.5), np.float64(15.0), np.float64(7.0), np.float64(7.5), np.float64(1.0)]
+           [np.float64(7.0), np.float64(7.0), np.float64(13.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(23.5), np.float64(7.5), np.float64(0.0), np.float64(73.0), np.float64(0.0)]
+           [np.float64(3.0), np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(4.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 131.0000
+       期望衝突值 (De) = 211.3244
+       Alpha = 1 - (131.0000 / 211.3244) = 0.3801
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(11.0), np.float64(17.5), np.float64(5.5)]
+           [np.float64(17.5), np.float64(119.0), np.float64(25.5)]
+           [np.float64(5.5), np.float64(25.5), np.float64(73.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 97.0000
+       期望衝突值 (De) = 173.1906
+       Alpha = 1 - (97.0000 / 173.1906) = 0.4399
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(74.0), np.float64(3.0), np.float64(16.0), np.float64(31.0)]
+           [np.float64(3.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+           [np.float64(16.0), np.float64(0.0), np.float64(7.0), np.float64(11.0)]
+           [np.float64(31.0), np.float64(1.0), np.float64(11.0), np.float64(95.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 124.0000
+       期望衝突值 (De) = 181.9666
+       Alpha = 1 - (124.0000 / 181.9666) = 0.3186
+
+【組2 | 第1週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(67.0), np.float64(7.0), np.float64(3.0)]
+           [np.float64(7.0), np.float64(71.0), np.float64(43.0)]
+           [np.float64(3.0), np.float64(43.0), np.float64(44.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 106.0000
+       期望衝突值 (De) = 189.1080
+       Alpha = 1 - (106.0000 / 189.1080) = 0.4395
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(49.0), np.float64(0.5), np.float64(1.0), np.float64(33.5), np.float64(0.0)]
+           [np.float64(0.5), np.float64(6.0), np.float64(0.0), np.float64(6.5), np.float64(0.0)]
+           [np.float64(1.0), np.float64(0.0), np.float64(10.0), np.float64(9.0), np.float64(0.0)]
+           [np.float64(33.5), np.float64(6.5), np.float64(9.0), np.float64(117.0), np.float64(1.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(1.0), np.float64(3.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 103.0000
+       期望衝突值 (De) = 165.2056
+       Alpha = 1 - (103.0000 / 165.2056) = 0.3765
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(7.0), np.float64(9.5), np.float64(6.5)]
+           [np.float64(9.5), np.float64(41.0), np.float64(36.5)]
+           [np.float64(6.5), np.float64(36.5), np.float64(135.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 105.0000
+       期望衝突值 (De) = 150.3902
+       Alpha = 1 - (105.0000 / 150.3902) = 0.3018
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(25.0), np.float64(1.0), np.float64(6.0), np.float64(33.0)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(6.0), np.float64(0.0), np.float64(2.0), np.float64(13.0)]
+           [np.float64(33.0), np.float64(0.0), np.float64(13.0), np.float64(155.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 106.0000
+       期望衝突值 (De) = 131.9721
+       Alpha = 1 - (106.0000 / 131.9721) = 0.1968
+
+【組2 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(41.0), np.float64(37.0)]
+           [np.float64(37.0), np.float64(185.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 74.0000
+       期望衝突值 (De) = 115.8261
+       Alpha = 1 - (74.0000 / 115.8261) = 0.3611
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(61.0), np.float64(27.0), np.float64(3.5), np.float64(22.5), np.float64(2.0)]
+           [np.float64(27.0), np.float64(14.0), np.float64(4.5), np.float64(7.5), np.float64(1.0)]
+           [np.float64(3.5), np.float64(4.5), np.float64(28.0), np.float64(7.0), np.float64(0.0)]
+           [np.float64(22.5), np.float64(7.5), np.float64(7.0), np.float64(41.0), np.float64(0.0)]
+           [np.float64(2.0), np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 150.0000
+       期望衝突值 (De) = 219.4448
+       Alpha = 1 - (150.0000 / 219.4448) = 0.3165
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(27.0), np.float64(29.5), np.float64(13.5)]
+           [np.float64(29.5), np.float64(99.0), np.float64(23.5)]
+           [np.float64(13.5), np.float64(23.5), np.float64(41.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 133.0000
+       期望衝突值 (De) = 186.9967
+       Alpha = 1 - (133.0000 / 186.9967) = 0.2888
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(66.0), np.float64(1.0), np.float64(11.5), np.float64(38.5)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+           [np.float64(11.5), np.float64(0.0), np.float64(8.0), np.float64(13.5)]
+           [np.float64(38.5), np.float64(1.0), np.float64(13.5), np.float64(95.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 131.0000
+       期望衝突值 (De) = 178.3077
+       Alpha = 1 - (131.0000 / 178.3077) = 0.2653
+
+【組2 | 第2週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(28.0), np.float64(5.0), np.float64(7.0)]
+           [np.float64(5.0), np.float64(96.0), np.float64(45.0)]
+           [np.float64(7.0), np.float64(45.0), np.float64(44.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 114.0000
+       期望衝突值 (De) = 168.6548
+       Alpha = 1 - (114.0000 / 168.6548) = 0.3241
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(38.0), np.float64(8.0), np.float64(0.5), np.float64(31.5), np.float64(0.0)]
+           [np.float64(8.0), np.float64(8.0), np.float64(1.0), np.float64(4.0), np.float64(0.0)]
+           [np.float64(0.5), np.float64(1.0), np.float64(25.0), np.float64(13.5), np.float64(0.0)]
+           [np.float64(31.5), np.float64(4.0), np.float64(13.5), np.float64(86.0), np.float64(1.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(1.0), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 119.0000
+       期望衝突值 (De) = 188.0925
+       Alpha = 1 - (119.0000 / 188.0925) = 0.3673
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(15.0), np.float64(14.5), np.float64(21.5)]
+           [np.float64(14.5), np.float64(48.0), np.float64(25.5)]
+           [np.float64(21.5), np.float64(25.5), np.float64(96.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 123.0000
+       期望衝突值 (De) = 173.4164
+       Alpha = 1 - (123.0000 / 173.4164) = 0.2907
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(40.0), np.float64(1.0), np.float64(3.0), np.float64(26.0)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+           [np.float64(3.0), np.float64(0.0), np.float64(0.0), np.float64(13.0)]
+           [np.float64(26.0), np.float64(1.0), np.float64(13.0), np.float64(154.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 88.0000
+       期望衝突值 (De) = 130.7046
+       Alpha = 1 - (88.0000 / 130.7046) = 0.3267
+
+【組2 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(51.0), np.float64(17.0)]
+           [np.float64(17.0), np.float64(203.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 34.0000
+       期望衝突值 (De) = 104.2509
+       Alpha = 1 - (34.0000 / 104.2509) = 0.6739
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(150.0), np.float64(11.0), np.float64(3.5), np.float64(17.0), np.float64(0.5)]
+           [np.float64(11.0), np.float64(16.0), np.float64(1.5), np.float64(0.0), np.float64(0.5)]
+           [np.float64(3.5), np.float64(1.5), np.float64(3.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(17.0), np.float64(0.0), np.float64(0.0), np.float64(51.0), np.float64(0.0)]
+           [np.float64(0.5), np.float64(0.5), np.float64(0.0), np.float64(0.0), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 68.0000
+       期望衝突值 (De) = 154.3206
+       Alpha = 1 - (68.0000 / 154.3206) = 0.5594
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(32.0), np.float64(29.5), np.float64(2.5)]
+           [np.float64(29.5), np.float64(112.0), np.float64(14.5)]
+           [np.float64(2.5), np.float64(14.5), np.float64(51.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 93.0000
+       期望衝突值 (De) = 173.8258
+       Alpha = 1 - (93.0000 / 173.8258) = 0.4650
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(79.0), np.float64(1.5), np.float64(11.5), np.float64(29.0)]
+           [np.float64(1.5), np.float64(0.0), np.float64(1.5), np.float64(0.0)]
+           [np.float64(11.5), np.float64(1.5), np.float64(4.0), np.float64(15.0)]
+           [np.float64(29.0), np.float64(0.0), np.float64(15.0), np.float64(88.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 117.0000
+       期望衝突值 (De) = 173.6794
+       Alpha = 1 - (117.0000 / 173.6794) = 0.3263
+
+【組2 | 第4週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(82.0), np.float64(29.0), np.float64(4.0)]
+           [np.float64(29.0), np.float64(152.0), np.float64(6.0)]
+           [np.float64(4.0), np.float64(6.0), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 78.0000
+       期望衝突值 (De) = 157.7170
+       Alpha = 1 - (78.0000 / 157.7170) = 0.5054
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(117.0), np.float64(3.0), np.float64(6.0), np.float64(27.0), np.float64(2.0)]
+           [np.float64(3.0), np.float64(7.0), np.float64(0.0), np.float64(5.0), np.float64(0.0)]
+           [np.float64(6.0), np.float64(0.0), np.float64(5.0), np.float64(3.0), np.float64(0.0)]
+           [np.float64(27.0), np.float64(5.0), np.float64(3.0), np.float64(90.0), np.float64(0.0)]
+           [np.float64(2.0), np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 92.0000
+       期望衝突值 (De) = 184.1286
+       Alpha = 1 - (92.0000 / 184.1286) = 0.5003
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(32.0), np.float64(23.0), np.float64(13.0)]
+           [np.float64(23.0), np.float64(74.0), np.float64(22.0)]
+           [np.float64(13.0), np.float64(22.0), np.float64(90.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 116.0000
+       期望衝突值 (De) = 202.3601
+       Alpha = 1 - (116.0000 / 202.3601) = 0.4268
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(62.0), np.float64(5.0), np.float64(37.0)]
+           [np.float64(5.0), np.float64(2.0), np.float64(8.0)]
+           [np.float64(37.0), np.float64(8.0), np.float64(148.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 100.0000
+       期望衝突值 (De) = 157.7299
+       Alpha = 1 - (100.0000 / 157.7299) = 0.3660
+
+【組3 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(31.0), np.float64(62.0)]
+           [np.float64(62.0), np.float64(163.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 124.0000
+       期望衝突值 (De) = 132.0189
+       Alpha = 1 - (124.0000 / 132.0189) = 0.0607
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(31.0), np.float64(9.0), np.float64(2.0), np.float64(45.0), np.float64(2.0)]
+           [np.float64(9.0), np.float64(12.0), np.float64(2.0), np.float64(23.5), np.float64(1.5)]
+           [np.float64(2.0), np.float64(2.0), np.float64(17.0), np.float64(8.0), np.float64(1.0)]
+           [np.float64(45.0), np.float64(23.5), np.float64(8.0), np.float64(59.0), np.float64(2.5)]
+           [np.float64(2.0), np.float64(1.5), np.float64(1.0), np.float64(2.5), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 193.0000
+       期望衝突值 (De) = 223.2997
+       Alpha = 1 - (193.0000 / 223.2997) = 0.1357
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(6.0), np.float64(23.0), np.float64(15.0)]
+           [np.float64(23.0), np.float64(109.0), np.float64(48.0)]
+           [np.float64(15.0), np.float64(48.0), np.float64(31.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 172.0000
+       期望衝突值 (De) = 182.8139
+       Alpha = 1 - (172.0000 / 182.8139) = 0.0592
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(66.0), np.float64(18.0), np.float64(49.0)]
+           [np.float64(18.0), np.float64(7.0), np.float64(22.0)]
+           [np.float64(49.0), np.float64(22.0), np.float64(67.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 178.0000
+       期望衝突值 (De) = 196.1577
+       Alpha = 1 - (178.0000 / 196.1577) = 0.0926
+
+【組3 | 第1週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(21.0), np.float64(3.5), np.float64(1.5)]
+           [np.float64(3.5), np.float64(92.0), np.float64(72.5)]
+           [np.float64(1.5), np.float64(72.5), np.float64(50.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 155.0000
+       期望衝突值 (De) = 179.3312
+       Alpha = 1 - (155.0000 / 179.3312) = 0.1357
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(57.0), np.float64(6.5), np.float64(0.0), np.float64(63.5), np.float64(0.0)]
+           [np.float64(6.5), np.float64(5.0), np.float64(0.0), np.float64(6.5), np.float64(0.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(12.0), np.float64(6.0), np.float64(0.0)]
+           [np.float64(63.5), np.float64(6.5), np.float64(6.0), np.float64(73.0), np.float64(0.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 165.0000
+       期望衝突值 (De) = 195.9306
+       Alpha = 1 - (165.0000 / 195.9306) = 0.1579
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(0.0), np.float64(4.0), np.float64(11.0)]
+           [np.float64(4.0), np.float64(51.0), np.float64(51.0)]
+           [np.float64(11.0), np.float64(51.0), np.float64(135.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 132.0000
+       期望衝突值 (De) = 160.4227
+       Alpha = 1 - (132.0000 / 160.4227) = 0.1772
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(30.0), np.float64(10.0), np.float64(39.0)]
+           [np.float64(10.0), np.float64(1.0), np.float64(16.0)]
+           [np.float64(39.0), np.float64(16.0), np.float64(157.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 130.0000
+       期望衝突值 (De) = 155.2366
+       Alpha = 1 - (130.0000 / 155.2366) = 0.1626
+
+【組3 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(11.0), np.float64(60.0)]
+           [np.float64(60.0), np.float64(151.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 120.0000
+       期望衝突值 (De) = 106.6263
+       Alpha = 1 - (120.0000 / 106.6263) = -0.1254
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(17.0), np.float64(15.5), np.float64(3.5), np.float64(36.5), np.float64(1.5)]
+           [np.float64(15.5), np.float64(22.0), np.float64(7.0), np.float64(19.5), np.float64(3.0)]
+           [np.float64(3.5), np.float64(7.0), np.float64(50.0), np.float64(3.5), np.float64(0.0)]
+           [np.float64(36.5), np.float64(19.5), np.float64(3.5), np.float64(11.0), np.float64(0.5)]
+           [np.float64(1.5), np.float64(3.0), np.float64(0.0), np.float64(0.5), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 181.0000
+       期望衝突值 (De) = 214.8968
+       Alpha = 1 - (181.0000 / 214.8968) = 0.1577
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(5.0), np.float64(18.5), np.float64(7.5)]
+           [np.float64(18.5), np.float64(109.0), np.float64(52.5)]
+           [np.float64(7.5), np.float64(52.5), np.float64(11.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 157.0000
+       期望衝突值 (De) = 146.3416
+       Alpha = 1 - (157.0000 / 146.3416) = -0.0728
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(45.0), np.float64(1.0), np.float64(26.0), np.float64(52.0)]
+           [np.float64(1.0), np.float64(0.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(26.0), np.float64(1.0), np.float64(6.0), np.float64(20.0)]
+           [np.float64(52.0), np.float64(0.0), np.float64(20.0), np.float64(31.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 200.0000
+       期望衝突值 (De) = 180.5196
+       Alpha = 1 - (200.0000 / 180.5196) = -0.1079
+
+【組3 | 第2週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(0.0), np.float64(15.0), np.float64(2.0)]
+           [np.float64(15.0), np.float64(111.0), np.float64(45.0)]
+           [np.float64(2.0), np.float64(45.0), np.float64(47.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 124.0000
+       期望衝突值 (De) = 146.4698
+       Alpha = 1 - (124.0000 / 146.4698) = 0.1534
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(45.0), np.float64(0.5), np.float64(2.0), np.float64(51.0), np.float64(2.5)]
+           [np.float64(0.5), np.float64(9.0), np.float64(0.0), np.float64(2.5), np.float64(0.0)]
+           [np.float64(2.0), np.float64(0.0), np.float64(45.0), np.float64(4.5), np.float64(0.5)]
+           [np.float64(51.0), np.float64(2.5), np.float64(4.5), np.float64(51.0), np.float64(2.0)]
+           [np.float64(2.5), np.float64(0.0), np.float64(0.5), np.float64(2.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 131.0000
+       期望衝突值 (De) = 192.5907
+       Alpha = 1 - (131.0000 / 192.5907) = 0.3198
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(5.0), np.float64(10.5), np.float64(6.5)]
+           [np.float64(10.5), np.float64(59.0), np.float64(47.5)]
+           [np.float64(6.5), np.float64(47.5), np.float64(89.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 129.0000
+       期望衝突值 (De) = 159.7936
+       Alpha = 1 - (129.0000 / 159.7936) = 0.1927
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(26.0), np.float64(1.0), np.float64(13.5), np.float64(43.5)]
+           [np.float64(1.0), np.float64(0.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(13.5), np.float64(1.0), np.float64(2.0), np.float64(14.5)]
+           [np.float64(43.5), np.float64(0.0), np.float64(14.5), np.float64(107.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 147.0000
+       期望衝突值 (De) = 157.5730
+       Alpha = 1 - (147.0000 / 157.5730) = 0.0671
+
+【組3 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(14.0), np.float64(17.0)]
+           [np.float64(17.0), np.float64(252.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 34.0000
+       期望衝突值 (De) = 55.7793
+       Alpha = 1 - (34.0000 / 55.7793) = 0.3905
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(160.0), np.float64(25.5), np.float64(4.0), np.float64(16.5), np.float64(3.0)]
+           [np.float64(25.5), np.float64(10.0), np.float64(1.0), np.float64(0.5), np.float64(1.0)]
+           [np.float64(4.0), np.float64(1.0), np.float64(7.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(16.5), np.float64(0.5), np.float64(0.0), np.float64(14.0), np.float64(0.0)]
+           [np.float64(3.0), np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 103.0000
+       期望衝突值 (De) = 146.0535
+       Alpha = 1 - (103.0000 / 146.0535) = 0.2948
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(13.0), np.float64(25.0), np.float64(1.0)]
+           [np.float64(25.0), np.float64(189.0), np.float64(16.0)]
+           [np.float64(1.0), np.float64(16.0), np.float64(14.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 84.0000
+       期望衝突值 (De) = 115.7793
+       Alpha = 1 - (84.0000 / 115.7793) = 0.2745
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(138.0), np.float64(2.0), np.float64(19.5), np.float64(36.5)]
+           [np.float64(2.0), np.float64(1.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(19.5), np.float64(0.0), np.float64(7.0), np.float64(4.5)]
+           [np.float64(36.5), np.float64(0.0), np.float64(4.5), np.float64(29.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 125.0000
+       期望衝突值 (De) = 152.8896
+       Alpha = 1 - (125.0000 / 152.8896) = 0.1824
+
+【組3 | 第4週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(16.0), np.float64(24.5), np.float64(2.5)]
+           [np.float64(24.5), np.float64(201.0), np.float64(14.5)]
+           [np.float64(2.5), np.float64(14.5), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 83.0000
+       期望衝突值 (De) = 101.2107
+       Alpha = 1 - (83.0000 / 101.2107) = 0.1799
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(141.0), np.float64(9.0), np.float64(11.0), np.float64(36.0), np.float64(2.0)]
+           [np.float64(9.0), np.float64(1.0), np.float64(2.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(11.0), np.float64(2.0), np.float64(11.0), np.float64(3.0), np.float64(0.0)]
+           [np.float64(36.0), np.float64(0.0), np.float64(3.0), np.float64(21.0), np.float64(0.0)]
+           [np.float64(2.0), np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 126.0000
+       期望衝突值 (De) = 153.5853
+       Alpha = 1 - (126.0000 / 153.5853) = 0.1796
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(18.0), np.float64(20.0), np.float64(2.0)]
+           [np.float64(20.0), np.float64(143.0), np.float64(37.0)]
+           [np.float64(2.0), np.float64(37.0), np.float64(21.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 118.0000
+       期望衝突值 (De) = 149.8328
+       Alpha = 1 - (118.0000 / 149.8328) = 0.2125
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(132.0), np.float64(4.5), np.float64(46.5)]
+           [np.float64(4.5), np.float64(2.0), np.float64(10.5)]
+           [np.float64(46.5), np.float64(10.5), np.float64(43.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 123.0000
+       期望衝突值 (De) = 154.5886
+       Alpha = 1 - (123.0000 / 154.5886) = 0.2043
+
+【組4 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(9.0), np.float64(31.0)]
+           [np.float64(31.0), np.float64(184.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 62.0000
+       期望衝突值 (De) = 67.7165
+       Alpha = 1 - (62.0000 / 67.7165) = 0.0844
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(57.0), np.float64(32.0), np.float64(5.0), np.float64(23.5), np.float64(6.5)]
+           [np.float64(32.0), np.float64(24.0), np.float64(3.0), np.float64(7.5), np.float64(1.5)]
+           [np.float64(5.0), np.float64(3.0), np.float64(7.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(23.5), np.float64(7.5), np.float64(0.0), np.float64(9.0), np.float64(0.0)]
+           [np.float64(6.5), np.float64(1.5), np.float64(0.0), np.float64(0.0), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 158.0000
+       期望衝突值 (De) = 169.8268
+       Alpha = 1 - (158.0000 / 169.8268) = 0.0696
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(18.0), np.float64(25.0), np.float64(10.0)]
+           [np.float64(25.0), np.float64(116.0), np.float64(21.0)]
+           [np.float64(10.0), np.float64(21.0), np.float64(9.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 112.0000
+       期望衝突值 (De) = 135.3228
+       Alpha = 1 - (112.0000 / 135.3228) = 0.1723
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(87.0), np.float64(1.0), np.float64(11.5), np.float64(28.5)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+           [np.float64(11.5), np.float64(0.0), np.float64(4.0), np.float64(16.5)]
+           [np.float64(28.5), np.float64(1.0), np.float64(16.5), np.float64(47.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 117.0000
+       期望衝突值 (De) = 153.4016
+       Alpha = 1 - (117.0000 / 153.4016) = 0.2373
+
+【組4 | 第1週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(7.0), np.float64(6.5), np.float64(4.5)]
+           [np.float64(6.5), np.float64(104.0), np.float64(40.5)]
+           [np.float64(4.5), np.float64(40.5), np.float64(41.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 103.0000
+       期望衝突值 (De) = 135.8425
+       Alpha = 1 - (103.0000 / 135.8425) = 0.2418
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(32.0), np.float64(16.0), np.float64(3.0), np.float64(38.0), np.float64(1.0)]
+           [np.float64(16.0), np.float64(20.0), np.float64(3.0), np.float64(3.0), np.float64(0.0)]
+           [np.float64(3.0), np.float64(3.0), np.float64(6.0), np.float64(3.0), np.float64(0.0)]
+           [np.float64(38.0), np.float64(3.0), np.float64(3.0), np.float64(55.0), np.float64(4.0)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(4.0), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 142.0000
+       期望衝突值 (De) = 174.4173
+       Alpha = 1 - (142.0000 / 174.4173) = 0.1859
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(10.0), np.float64(15.0), np.float64(11.0)]
+           [np.float64(15.0), np.float64(63.0), np.float64(22.0)]
+           [np.float64(11.0), np.float64(22.0), np.float64(86.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 96.0000
+       期望衝突值 (De) = 155.7795
+       Alpha = 1 - (96.0000 / 155.7795) = 0.3837
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(47.0), np.float64(6.0), np.float64(25.0)]
+           [np.float64(6.0), np.float64(4.0), np.float64(12.0)]
+           [np.float64(25.0), np.float64(12.0), np.float64(118.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 86.0000
+       期望衝突值 (De) = 135.5591
+       Alpha = 1 - (86.0000 / 135.5591) = 0.3656
+
+【組4 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(14.0), np.float64(55.0)]
+           [np.float64(55.0), np.float64(221.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 110.0000
+       期望衝突值 (De) = 110.7209
+       Alpha = 1 - (110.0000 / 110.7209) = 0.0065
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(76.0), np.float64(46.5), np.float64(6.0), np.float64(46.5), np.float64(3.0)]
+           [np.float64(46.5), np.float64(20.0), np.float64(4.5), np.float64(5.5), np.float64(0.5)]
+           [np.float64(6.0), np.float64(4.5), np.float64(4.0), np.float64(1.5), np.float64(0.0)]
+           [np.float64(46.5), np.float64(5.5), np.float64(1.5), np.float64(14.0), np.float64(1.5)]
+           [np.float64(3.0), np.float64(0.5), np.float64(0.0), np.float64(1.5), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 231.0000
+       期望衝突值 (De) = 222.0058
+       Alpha = 1 - (231.0000 / 222.0058) = -0.0405
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(36.0), np.float64(24.5), np.float64(5.5)]
+           [np.float64(24.5), np.float64(136.0), np.float64(49.5)]
+           [np.float64(5.5), np.float64(49.5), np.float64(14.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 159.0000
+       期望衝突值 (De) = 191.3023
+       Alpha = 1 - (159.0000 / 191.3023) = 0.1689
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(109.0), np.float64(4.0), np.float64(6.5), np.float64(59.5)]
+           [np.float64(4.0), np.float64(0.0), np.float64(1.0), np.float64(1.0)]
+           [np.float64(6.5), np.float64(1.0), np.float64(4.0), np.float64(13.5)]
+           [np.float64(59.5), np.float64(1.0), np.float64(13.5), np.float64(61.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 171.0000
+       期望衝突值 (De) = 197.9593
+       Alpha = 1 - (171.0000 / 197.9593) = 0.1362
+
+【組4 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(23.0), np.float64(24.0)]
+           [np.float64(24.0), np.float64(229.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 48.0000
+       期望衝突值 (De) = 79.5385
+       Alpha = 1 - (48.0000 / 79.5385) = 0.3965
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(185.0), np.float64(10.5), np.float64(1.5), np.float64(24.0), np.float64(7.0)]
+           [np.float64(10.5), np.float64(1.0), np.float64(0.5), np.float64(0.0), np.float64(0.0)]
+           [np.float64(1.5), np.float64(0.5), np.float64(3.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(24.0), np.float64(0.0), np.float64(0.0), np.float64(23.0), np.float64(0.0)]
+           [np.float64(7.0), np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 87.0000
+       期望衝突值 (De) = 118.9766
+       Alpha = 1 - (87.0000 / 118.9766) = 0.2688
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(8.0), np.float64(16.0), np.float64(4.0)]
+           [np.float64(16.0), np.float64(189.0), np.float64(20.0)]
+           [np.float64(4.0), np.float64(20.0), np.float64(23.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 80.0000
+       期望衝突值 (De) = 121.6789
+       Alpha = 1 - (80.0000 / 121.6789) = 0.3425
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(141.0), np.float64(3.0), np.float64(16.0), np.float64(27.0)]
+           [np.float64(3.0), np.float64(0.0), np.float64(0.5), np.float64(0.5)]
+           [np.float64(16.0), np.float64(0.5), np.float64(9.0), np.float64(8.5)]
+           [np.float64(27.0), np.float64(0.5), np.float64(8.5), np.float64(39.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 111.0000
+       期望衝突值 (De) = 161.3177
+       Alpha = 1 - (111.0000 / 161.3177) = 0.3119
+
+【組5 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(60.0), np.float64(45.0)]
+           [np.float64(45.0), np.float64(216.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 90.0000
+       期望衝突值 (De) = 150.1644
+       Alpha = 1 - (90.0000 / 150.1644) = 0.4007
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(40.0), np.float64(45.0), np.float64(9.5), np.float64(24.5), np.float64(0.0)]
+           [np.float64(45.0), np.float64(20.0), np.float64(12.5), np.float64(18.0), np.float64(2.5)]
+           [np.float64(9.5), np.float64(12.5), np.float64(17.0), np.float64(2.0), np.float64(0.0)]
+           [np.float64(24.5), np.float64(18.0), np.float64(2.0), np.float64(60.0), np.float64(0.5)]
+           [np.float64(0.0), np.float64(2.5), np.float64(0.0), np.float64(0.5), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 229.0000
+       期望衝突值 (De) = 267.0575
+       Alpha = 1 - (229.0000 / 267.0575) = 0.1425
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(16.0), np.float64(25.5), np.float64(7.5)]
+           [np.float64(25.5), np.float64(149.0), np.float64(37.5)]
+           [np.float64(7.5), np.float64(37.5), np.float64(60.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 141.0000
+       期望衝突值 (De) = 207.0849
+       Alpha = 1 - (141.0000 / 207.0849) = 0.3191
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(88.0), np.float64(0.0), np.float64(19.0), np.float64(42.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(1.0), np.float64(1.0)]
+           [np.float64(19.0), np.float64(1.0), np.float64(21.0), np.float64(20.0)]
+           [np.float64(42.0), np.float64(1.0), np.float64(20.0), np.float64(91.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 166.0000
+       期望衝突值 (De) = 230.9973
+       Alpha = 1 - (166.0000 / 230.9973) = 0.2814
+
+【組5 | 第1週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(45.0), np.float64(1.0), np.float64(3.0)]
+           [np.float64(1.0), np.float64(22.0), np.float64(59.0)]
+           [np.float64(3.0), np.float64(59.0), np.float64(62.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 126.0000
+       期望衝突值 (De) = 159.5433
+       Alpha = 1 - (126.0000 / 159.5433) = 0.2102
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(3.0), np.float64(0.5), np.float64(0.0), np.float64(47.5)]
+           [np.float64(0.5), np.float64(6.0), np.float64(0.0), np.float64(8.5)]
+           [np.float64(0.0), np.float64(0.0), np.float64(12.0), np.float64(4.0)]
+           [np.float64(47.5), np.float64(8.5), np.float64(4.0), np.float64(113.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 121.0000
+       期望衝突值 (De) = 126.0394
+       Alpha = 1 - (121.0000 / 126.0394) = 0.0400
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(5.0), np.float64(6.0), np.float64(5.0)]
+           [np.float64(6.0), np.float64(5.0), np.float64(47.0)]
+           [np.float64(5.0), np.float64(47.0), np.float64(129.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 116.0000
+       期望衝突值 (De) = 112.7717
+       Alpha = 1 - (116.0000 / 112.7717) = -0.0286
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(4.0), np.float64(0.5), np.float64(37.5)]
+           [np.float64(0.5), np.float64(0.0), np.float64(15.5)]
+           [np.float64(37.5), np.float64(15.5), np.float64(144.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 107.0000
+       期望衝突值 (De) = 95.2598
+       Alpha = 1 - (107.0000 / 95.2598) = -0.1232
+
+【組5 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(47.0), np.float64(34.0)]
+           [np.float64(34.0), np.float64(119.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 68.0000
+       期望衝突值 (De) = 106.3777
+       Alpha = 1 - (68.0000 / 106.3777) = 0.3608
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(26.0), np.float64(23.5), np.float64(2.5), np.float64(13.5), np.float64(0.5)]
+           [np.float64(23.5), np.float64(15.0), np.float64(7.5), np.float64(19.0), np.float64(1.0)]
+           [np.float64(2.5), np.float64(7.5), np.float64(5.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(13.5), np.float64(19.0), np.float64(1.0), np.float64(47.0), np.float64(0.5)]
+           [np.float64(0.5), np.float64(1.0), np.float64(0.0), np.float64(0.5), np.float64(3.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 138.0000
+       期望衝突值 (De) = 168.2489
+       Alpha = 1 - (138.0000 / 168.2489) = 0.1798
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(11.0), np.float64(11.5), np.float64(1.5)]
+           [np.float64(11.5), np.float64(85.0), np.float64(32.5)]
+           [np.float64(1.5), np.float64(32.5), np.float64(47.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 91.0000
+       期望衝突值 (De) = 132.9528
+       Alpha = 1 - (91.0000 / 132.9528) = 0.3155
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(57.0), np.float64(1.0), np.float64(10.5), np.float64(27.5)]
+           [np.float64(1.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]
+           [np.float64(10.5), np.float64(0.0), np.float64(5.0), np.float64(16.5)]
+           [np.float64(27.5), np.float64(0.0), np.float64(16.5), np.float64(61.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 111.0000
+       期望衝突值 (De) = 143.7339
+       Alpha = 1 - (111.0000 / 143.7339) = 0.2277
+
+【組5 | 第2週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(33.0), np.float64(7.5), np.float64(9.5)]
+           [np.float64(7.5), np.float64(47.0), np.float64(37.5)]
+           [np.float64(9.5), np.float64(37.5), np.float64(45.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 109.0000
+       期望衝突值 (De) = 151.6223
+       Alpha = 1 - (109.0000 / 151.6223) = 0.2811
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(20.0), np.float64(5.5), np.float64(1.5), np.float64(38.0), np.float64(0.0)]
+           [np.float64(5.5), np.float64(6.0), np.float64(0.5), np.float64(5.0), np.float64(0.0)]
+           [np.float64(1.5), np.float64(0.5), np.float64(3.0), np.float64(2.0), np.float64(0.0)]
+           [np.float64(38.0), np.float64(5.0), np.float64(2.0), np.float64(97.0), np.float64(0.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(3.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 105.0000
+       期望衝突值 (De) = 128.8412
+       Alpha = 1 - (105.0000 / 128.8412) = 0.1850
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(1.0), np.float64(5.0), np.float64(7.0)]
+           [np.float64(5.0), np.float64(34.0), np.float64(45.0)]
+           [np.float64(7.0), np.float64(45.0), np.float64(85.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 114.0000
+       期望衝突值 (De) = 123.4421
+       Alpha = 1 - (114.0000 / 123.4421) = 0.0765
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(23.0), np.float64(4.0), np.float64(32.0)]
+           [np.float64(4.0), np.float64(3.0), np.float64(18.0)]
+           [np.float64(32.0), np.float64(18.0), np.float64(100.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 108.0000
+       期望衝突值 (De) = 120.8155
+       Alpha = 1 - (108.0000 / 120.8155) = 0.1061
+
+【組5 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(79.0), np.float64(54.0)]
+           [np.float64(54.0), np.float64(113.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 108.0000
+       期望衝突值 (De) = 148.5686
+       Alpha = 1 - (108.0000 / 148.5686) = 0.2731
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(61.0), np.float64(16.5), np.float64(6.0), np.float64(36.5)]
+           [np.float64(16.5), np.float64(2.0), np.float64(2.5), np.float64(16.0)]
+           [np.float64(6.0), np.float64(2.5), np.float64(0.0), np.float64(1.5)]
+           [np.float64(36.5), np.float64(16.0), np.float64(1.5), np.float64(79.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 158.0000
+       期望衝突值 (De) = 188.7692
+       Alpha = 1 - (158.0000 / 188.7692) = 0.1630
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(7.0), np.float64(13.5), np.float64(6.5)]
+           [np.float64(13.5), np.float64(79.0), np.float64(47.5)]
+           [np.float64(6.5), np.float64(47.5), np.float64(79.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 135.0000
+       期望衝突值 (De) = 173.8528
+       Alpha = 1 - (135.0000 / 173.8528) = 0.2235
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(56.0), np.float64(9.5), np.float64(48.5)]
+           [np.float64(9.5), np.float64(4.0), np.float64(12.5)]
+           [np.float64(48.5), np.float64(12.5), np.float64(99.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 141.0000
+       期望衝突值 (De) = 169.6589
+       Alpha = 1 - (141.0000 / 169.6589) = 0.1689
+
+【組6 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(39.0), np.float64(75.0)]
+           [np.float64(75.0), np.float64(123.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 150.0000
+       期望衝突值 (De) = 145.1576
+       Alpha = 1 - (150.0000 / 145.1576) = -0.0334
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(45.0), np.float64(7.0), np.float64(8.5), np.float64(58.5)]
+           [np.float64(7.0), np.float64(4.0), np.float64(6.0), np.float64(5.0)]
+           [np.float64(8.5), np.float64(6.0), np.float64(31.0), np.float64(11.5)]
+           [np.float64(58.5), np.float64(5.0), np.float64(11.5), np.float64(39.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 193.0000
+       期望衝突值 (De) = 213.6785
+       Alpha = 1 - (193.0000 / 213.6785) = 0.0968
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(19.0), np.float64(7.5), np.float64(8.5)]
+           [np.float64(7.5), np.float64(89.0), np.float64(66.5)]
+           [np.float64(8.5), np.float64(66.5), np.float64(39.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 165.0000
+       期望衝突值 (De) = 181.8457
+       Alpha = 1 - (165.0000 / 181.8457) = 0.0926
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(41.0), np.float64(12.5), np.float64(37.5)]
+           [np.float64(12.5), np.float64(23.0), np.float64(36.5)]
+           [np.float64(37.5), np.float64(36.5), np.float64(75.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 173.0000
+       期望衝突值 (De) = 198.3215
+       Alpha = 1 - (173.0000 / 198.3215) = 0.1277
+
+【組6 | 第1週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(24.0), np.float64(5.0), np.float64(25.0)]
+           [np.float64(5.0), np.float64(65.0), np.float64(46.0)]
+           [np.float64(25.0), np.float64(46.0), np.float64(71.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 152.0000
+       期望衝突值 (De) = 195.5241
+       Alpha = 1 - (152.0000 / 195.5241) = 0.2226
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(7.0), np.float64(9.0), np.float64(1.5), np.float64(17.5)]
+           [np.float64(9.0), np.float64(12.0), np.float64(1.5), np.float64(25.5)]
+           [np.float64(1.5), np.float64(1.5), np.float64(22.0), np.float64(8.0)]
+           [np.float64(17.5), np.float64(25.5), np.float64(8.0), np.float64(145.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 126.0000
+       期望衝突值 (De) = 174.6302
+       Alpha = 1 - (126.0000 / 174.6302) = 0.2785
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(10.0), np.float64(4.0), np.float64(9.0)]
+           [np.float64(4.0), np.float64(32.0), np.float64(33.0)]
+           [np.float64(9.0), np.float64(33.0), np.float64(178.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 92.0000
+       期望衝突值 (De) = 140.3666
+       Alpha = 1 - (92.0000 / 140.3666) = 0.3446
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(20.0), np.float64(3.0), np.float64(19.0)]
+           [np.float64(3.0), np.float64(6.0), np.float64(18.0)]
+           [np.float64(19.0), np.float64(18.0), np.float64(206.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 80.0000
+       期望衝突值 (De) = 115.1190
+       Alpha = 1 - (80.0000 / 115.1190) = 0.3051
+
+【組6 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(43.0), np.float64(43.0)]
+           [np.float64(43.0), np.float64(159.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 86.0000
+       期望衝突值 (De) = 121.0592
+       Alpha = 1 - (86.0000 / 121.0592) = 0.2896
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(6.0), np.float64(20.5), np.float64(4.5), np.float64(24.5), np.float64(2.5)]
+           [np.float64(20.5), np.float64(24.0), np.float64(14.0), np.float64(7.5), np.float64(4.0)]
+           [np.float64(4.5), np.float64(14.0), np.float64(25.0), np.float64(10.0), np.float64(2.5)]
+           [np.float64(24.5), np.float64(7.5), np.float64(10.0), np.float64(43.0), np.float64(1.0)]
+           [np.float64(2.5), np.float64(4.0), np.float64(2.5), np.float64(1.0), np.float64(8.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 182.0000
+       期望衝突值 (De) = 222.3833
+       Alpha = 1 - (182.0000 / 222.3833) = 0.1816
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(8.0), np.float64(23.0), np.float64(4.0)]
+           [np.float64(23.0), np.float64(105.0), np.float64(39.0)]
+           [np.float64(4.0), np.float64(39.0), np.float64(43.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 132.0000
+       期望衝突值 (De) = 161.7909
+       Alpha = 1 - (132.0000 / 161.7909) = 0.1841
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(35.0), np.float64(18.0), np.float64(37.0)]
+           [np.float64(18.0), np.float64(34.0), np.float64(25.0)]
+           [np.float64(37.0), np.float64(25.0), np.float64(59.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 160.0000
+       期望衝突值 (De) = 189.1080
+       Alpha = 1 - (160.0000 / 189.1080) = 0.1539
+
+【組6 | 第2週 | 重標註第1輪】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(43.0), np.float64(14.0), np.float64(13.0)]
+           [np.float64(14.0), np.float64(70.0), np.float64(36.0)]
+           [np.float64(13.0), np.float64(36.0), np.float64(49.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 126.0000
+       期望衝突值 (De) = 188.2927
+       Alpha = 1 - (126.0000 / 188.2927) = 0.3308
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(4.0), np.float64(12.5), np.float64(0.5), np.float64(27.0), np.float64(0.0)]
+           [np.float64(12.5), np.float64(14.0), np.float64(1.0), np.float64(13.5), np.float64(0.0)]
+           [np.float64(0.5), np.float64(1.0), np.float64(18.0), np.float64(4.5), np.float64(0.0)]
+           [np.float64(27.0), np.float64(13.5), np.float64(4.5), np.float64(118.0), np.float64(5.0)]
+           [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(5.0), np.float64(6.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 128.0000
+       期望衝突值 (De) = 175.6307
+       Alpha = 1 - (128.0000 / 175.6307) = 0.2712
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(3.0), np.float64(10.0), np.float64(5.0)]
+           [np.float64(10.0), np.float64(46.0), np.float64(56.0)]
+           [np.float64(5.0), np.float64(56.0), np.float64(97.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 142.0000
+       期望衝突值 (De) = 157.1847
+       Alpha = 1 - (142.0000 / 157.1847) = 0.0966
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(20.0), np.float64(6.0), np.float64(38.0)]
+           [np.float64(6.0), np.float64(14.0), np.float64(28.0)]
+           [np.float64(38.0), np.float64(28.0), np.float64(110.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 144.0000
+       期望衝突值 (De) = 158.7735
+       Alpha = 1 - (144.0000 / 158.7735) = 0.0930
+
+【組6 | 第3週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(42.0), np.float64(37.0)]
+           [np.float64(37.0), np.float64(184.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 74.0000
+       期望衝突值 (De) = 116.7826
+       Alpha = 1 - (74.0000 / 116.7826) = 0.3663
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(53.0), np.float64(27.5), np.float64(4.5), np.float64(32.0), np.float64(5.0)]
+           [np.float64(27.5), np.float64(14.0), np.float64(4.5), np.float64(2.5), np.float64(0.5)]
+           [np.float64(4.5), np.float64(4.5), np.float64(31.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(32.0), np.float64(2.5), np.float64(1.0), np.float64(42.0), np.float64(1.5)]
+           [np.float64(5.0), np.float64(0.5), np.float64(0.0), np.float64(1.5), np.float64(2.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 158.0000
+       期望衝突值 (De) = 216.4281
+       Alpha = 1 - (158.0000 / 216.4281) = 0.2700
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(8.0), np.float64(14.5), np.float64(3.5)]
+           [np.float64(14.5), np.float64(147.0), np.float64(33.5)]
+           [np.float64(3.5), np.float64(33.5), np.float64(42.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 103.0000
+       期望衝突值 (De) = 150.6957
+       Alpha = 1 - (103.0000 / 150.6957) = 0.3165
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(68.0), np.float64(32.5), np.float64(36.5)]
+           [np.float64(32.5), np.float64(14.0), np.float64(11.5)]
+           [np.float64(36.5), np.float64(11.5), np.float64(57.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 161.0000
+       期望衝突值 (De) = 190.1070
+       Alpha = 1 - (161.0000 / 190.1070) = 0.1531
+
+【組6 | 第4週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(79.0), np.float64(35.0)]
+           [np.float64(35.0), np.float64(151.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 70.0000
+       期望衝突值 (De) = 141.8328
+       Alpha = 1 - (70.0000 / 141.8328) = 0.5065
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(20.0), np.float64(31.0), np.float64(2.5), np.float64(23.5), np.float64(1.0)]
+           [np.float64(31.0), np.float64(15.0), np.float64(7.5), np.float64(8.0), np.float64(0.5)]
+           [np.float64(2.5), np.float64(7.5), np.float64(31.0), np.float64(2.0), np.float64(0.0)]
+           [np.float64(23.5), np.float64(8.0), np.float64(2.0), np.float64(79.0), np.float64(1.5)]
+           [np.float64(1.0), np.float64(0.5), np.float64(0.0), np.float64(1.5), np.float64(0.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 155.0000
+       期望衝突值 (De) = 218.1204
+       Alpha = 1 - (155.0000 / 218.1204) = 0.2894
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(8.0), np.float64(14.5), np.float64(3.5)]
+           [np.float64(14.5), np.float64(114.0), np.float64(31.5)]
+           [np.float64(3.5), np.float64(31.5), np.float64(79.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 99.0000
+       期望衝突值 (De) = 169.6589
+       Alpha = 1 - (99.0000 / 169.6589) = 0.4165
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(36.0), np.float64(30.5), np.float64(24.5)]
+           [np.float64(30.5), np.float64(17.0), np.float64(21.5)]
+           [np.float64(24.5), np.float64(21.5), np.float64(94.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 153.0000
+       期望衝突值 (De) = 191.8328
+       Alpha = 1 - (153.0000 / 191.8328) = 0.2024
+
+【組7 | 第1週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(39.0), np.float64(37.0)]
+           [np.float64(37.0), np.float64(127.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 74.0000
+       期望衝突值 (De) = 104.3013
+       Alpha = 1 - (74.0000 / 104.3013) = 0.2905
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(8.0), np.float64(13.5), np.float64(1.5), np.float64(13.0), np.float64(1.0)]
+           [np.float64(13.5), np.float64(58.0), np.float64(4.5), np.float64(18.0), np.float64(5.0)]
+           [np.float64(1.5), np.float64(4.5), np.float64(7.0), np.float64(1.0), np.float64(0.0)]
+           [np.float64(13.0), np.float64(18.0), np.float64(1.0), np.float64(39.0), np.float64(5.0)]
+           [np.float64(1.0), np.float64(5.0), np.float64(0.0), np.float64(5.0), np.float64(3.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 125.0000
+       期望衝突值 (De) = 168.4603
+       Alpha = 1 - (125.0000 / 168.4603) = 0.2580
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(21.0), np.float64(27.0), np.float64(14.0)]
+           [np.float64(27.0), np.float64(52.0), np.float64(23.0)]
+           [np.float64(14.0), np.float64(23.0), np.float64(39.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 128.0000
+       期望衝突值 (De) = 157.2218
+       Alpha = 1 - (128.0000 / 157.2218) = 0.1859
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Not Clear': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(32.0), np.float64(5.0), np.float64(28.0)]
+           [np.float64(5.0), np.float64(10.0), np.float64(22.0)]
+           [np.float64(28.0), np.float64(22.0), np.float64(88.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 110.0000
+       期望衝突值 (De) = 137.9163
+       Alpha = 1 - (110.0000 / 137.9163) = 0.2024
+
+【組7 | 第2週 | 初次標註】
+   >>> 維度: 承諾狀態
+       類別映射: {'No': 0, 'Yes': 1}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(80.0), np.float64(53.0)]
+           [np.float64(53.0), np.float64(174.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 106.0000
+       期望衝突值 (De) = 168.1950
+       Alpha = 1 - (106.0000 / 168.1950) = 0.3698
+
+   >>> 維度: 驗證時間
+       類別映射: {'already': 0, 'between_2_and_5_years': 1, 'longer_than_5_years': 2, 'nan': 3, 'within_2_years': 4}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(32.0), np.float64(25.0), np.float64(1.0), np.float64(31.0), np.float64(2.0)]
+           [np.float64(25.0), np.float64(65.0), np.float64(5.5), np.float64(15.0), np.float64(2.5)]
+           [np.float64(1.0), np.float64(5.5), np.float64(3.0), np.float64(1.0), np.float64(0.5)]
+           [np.float64(31.0), np.float64(15.0), np.float64(1.0), np.float64(80.0), np.float64(6.0)]
+           [np.float64(2.0), np.float64(2.5), np.float64(0.5), np.float64(6.0), np.float64(1.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 179.0000
+       期望衝突值 (De) = 252.3565
+       Alpha = 1 - (179.0000 / 252.3565) = 0.2907
+
+   >>> 維度: 證據狀態
+       類別映射: {'No': 0, 'Yes': 1, 'nan': 2}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(22.0), np.float64(21.0), np.float64(9.0)]
+           [np.float64(21.0), np.float64(110.0), np.float64(44.0)]
+           [np.float64(9.0), np.float64(44.0), np.float64(80.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 148.0000
+       期望衝突值 (De) = 218.8914
+       Alpha = 1 - (148.0000 / 218.8914) = 0.3239
+
+   >>> 維度: 證據品質
+       類別映射: {'Clear': 0, 'Misleading': 1, 'Not Clear': 2, 'nan': 3}
+       符合矩陣 (Coincidence Matrix):
+           [np.float64(51.0), np.float64(0.5), np.float64(17.0), np.float64(37.5)]
+           [np.float64(0.5), np.float64(0.0), np.float64(1.0), np.float64(0.5)]
+           [np.float64(17.0), np.float64(1.0), np.float64(22.0), np.float64(27.0)]
+           [np.float64(37.5), np.float64(0.5), np.float64(27.0), np.float64(120.0)]
+       觀察衝突值 (Do) = Sum(非對角線) = 167.0000
+       期望衝突值 (De) = 221.8552
+       Alpha = 1 - (167.0000 / 221.8552) = 0.2473
+

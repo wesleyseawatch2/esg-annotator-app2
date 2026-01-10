@@ -19,10 +19,10 @@ import {
   updateSourceDataPageNumber,
   toggleAnnotationMark,
   getProjectTasksOverview
-} from './actions';
+} from '../actions';
 import dynamic from 'next/dynamic';
 
-const PDFViewer = dynamic(() => import('../components/PDFViewer'), {
+const PDFViewer = dynamic(() => import('../../components/PDFViewer'), {
   ssr: false,
   loading: () => <div className="pdf-status">正在載入 PDF 瀏覽器...</div>
 });
