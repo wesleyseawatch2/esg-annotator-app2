@@ -537,6 +537,63 @@ export async function saveAnnotation(data) {
     const esgTypeArray = typeof esg_type === 'string' ? esg_type.split(',').filter(Boolean) : esg_type;
     const isSkipped = skipped === true;
 
+    // 1. 先撈取舊資料 (以比對差異)
+    const { rows: oldRows } = await sql`
+      SELECT * FROM annotations 
+      WHERE source_data_id = ${source_data_id} 
+      AND user_id = ${user_id};
+    `;
+    
+    // 如果有舊資料，進行比對並寫入 Log
+    if (oldRows.length > 0) {
+      const oldData = oldRows[0];
+      const changes = [];
+      const currentRound = oldData.reannotation_round || 0; 
+
+      // 定義要監控的欄位
+      const fieldsToCheck = [
+        { key: 'promise_status', label: '承諾狀態' },
+        { key: 'verification_timeline', label: '驗證時間軸' },
+        { key: 'evidence_status', label: '證據狀態' },
+        { key: 'evidence_quality', label: '證據品質' },
+        // 字串類欄位若太長，可考慮截斷或只記「已修改」
+        { key: 'promise_string', label: '承諾標記' },
+        { key: 'evidence_string', label: '證據標記' }
+      ];
+
+      fieldsToCheck.forEach(field => {
+        let oldVal = oldData[field.key] || '';
+        let newVal = data[field.key] || '';
+        
+        // 簡單轉字串比對
+        if (String(oldVal).trim() !== String(newVal).trim()) {
+           changes.push({
+             field: field.label, // 存中文欄位名比較好讀
+             oldVal: String(oldVal).substring(0, 100), // 限制長度避免爆表
+             newVal: String(newVal).substring(0, 100)
+           });
+        }
+      });
+
+      // 2. 寫入 Audit Log
+      if (changes.length > 0) {
+        // 為了讓 Modal 好讀，我們把改了什麼拼成一個字串存入 task_name (或您可以擴充資料表欄位)
+        // 這裡假設您的 audit_log 表結構如上次所示
+        for (const change of changes) {
+            await sql`
+                INSERT INTO reannotation_audit_log (
+                source_data_id, user_id, task_name, old_value, new_value, 
+                round_number, changed_at, change_reason
+                ) VALUES (
+                ${source_data_id}, ${user_id}, ${change.field}, ${change.oldVal}, ${change.newVal},
+                ${currentRound}, NOW(), '使用者重標註'
+                );
+            `;
+        }
+      }
+    }
+
+    // 3. 儲存/更新
     await sql`
       INSERT INTO annotations (
         source_data_id, user_id, esg_type, promise_status, promise_string,
@@ -560,6 +617,28 @@ export async function saveAnnotation(data) {
     `;
     revalidatePath('/');
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// 讀取單筆資料的重標註歷史紀錄
+export async function getReannotationHistory(sourceDataId, userId) {
+  try {
+    const { rows } = await sql`
+      SELECT changed_at, task_name, old_value, new_value
+      FROM reannotation_audit_log
+      WHERE source_data_id = ${sourceDataId}
+      AND user_id = ${userId}
+      ORDER BY changed_at DESC;
+    `;
+    // 格式化時間
+    const history = rows.map(row => ({
+        ...row,
+        changed_at: new Date(row.changed_at).toLocaleString('zh-TW')
+    }));
+    
+    return { success: true, history };
   } catch (error) {
     return { success: false, error: error.message };
   }

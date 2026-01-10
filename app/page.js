@@ -18,7 +18,8 @@ import {
   getLocalAnnouncements,
   updateSourceDataPageNumber,
   toggleAnnotationMark,
-  getProjectTasksOverview
+  getProjectTasksOverview,
+  getReannotationHistory
 } from './actions';
 import dynamic from 'next/dynamic';
 
@@ -773,6 +774,56 @@ function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
     );
 }
 
+function HistoryModal({ isOpen, onClose, history, loading }) {
+    if (!isOpen) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+            display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }} onClick={onClose}>
+            <div style={{
+                background: 'white', padding: '20px', borderRadius: '8px',
+                width: '600px', maxHeight: '80vh', overflowY: 'auto',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                    <h3 style={{ margin: 0 }}>📜 標註修改歷史紀錄</h3>
+                    <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
+                </div>
+
+                {loading ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>載入中...</div>
+                ) : history.length === 0 ? (
+                    <div style={{ color: '#666', textAlign: 'center' }}>尚無修改紀錄</div>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                        <thead>
+                            <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>時間</th>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>變更欄位</th>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>舊值</th>
+                                <th style={{ padding: '8px', textAlign: 'left' }}>新值</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {history.map((log, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                    <td style={{ padding: '8px', color: '#6b7280', fontSize: '12px' }}>{log.changed_at}</td>
+                                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{log.task_name}</td>
+                                    <td style={{ padding: '8px', color: '#ef4444' }}>{log.old_value || '(空)'}</td>
+                                    <td style={{ padding: '8px', color: '#10b981' }}>{log.new_value}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequence, onJumpConsumed }) {
     const [currentItem, setCurrentItem] = useState(undefined);
     const [progress, setProgress] = useState({ completed: 0, total: 0 });
@@ -795,6 +846,23 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const dataTextRef = useRef(null);
     const [reannotationList, setReannotationList] = useState([]);
     const [loadingReannotation, setLoadingReannotation] = useState(false);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [historyData, setHistoryData] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    // 處理點擊資料筆數
+    const handleShowHistory = async (task) => {
+        setIsHistoryModalOpen(true);
+        setHistoryLoading(true);
+        // 呼叫後端 action
+        const res = await getReannotationHistory(task.id, user.id); // 這裡 task.id 應該對應 source_data_id
+        if (res.success) {
+            setHistoryData(res.history);
+        } else {
+            alert('載入歷史失敗');
+        }
+        setHistoryLoading(false);
+    };
 
     // --- 輔助函式：去除重複的任務 (根據 ID) ---
     const getUniqueTasks = (tasks) => {
@@ -936,9 +1004,10 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             const result = await response.json();
             
             if (result.success && Array.isArray(result.tasks)) {
-                // 將計算結果存入 State
-                setReannotationList(result.tasks);
-                console.log("Project Global Alphas:", result.global_alphas);
+            // 只留下「需要重標註 (分數 < 0.8)」
+            // 或者是「使用者已經開始修了 (modify_count > 0)」的資料，方便回頭看
+                const filteredTasks = result.tasks.filter(t => t.needs_reannotation || t.modify_count > 0);
+                setReannotationList(filteredTasks);
             } else {
                 setReannotationList([]);
             }
@@ -1854,6 +1923,14 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
 
 return (
         <div className="container">
+
+            <HistoryModal 
+                isOpen={isHistoryModalOpen} 
+                onClose={() => setIsHistoryModalOpen(false)} 
+                history={historyData}
+                loading={historyLoading}
+            />
+
             <div className="header">
                 <h1>{project.name} - 標註工具</h1>
                 <div className="controls">
@@ -2151,19 +2228,20 @@ return (
                             <table className="re-table">
                                 <thead>
                                     <tr>
-                                        <th style={{ width: '90px' }}>狀態</th>
-                                        <th style={{ width: '110px' }}>資料</th>
-                                        <th>文本</th>
-                                        <th style={{ width: '120px', fontSize: '12px' }}>承諾狀態</th>
-                                        <th style={{ width: '120px', fontSize: '12px' }}>驗證時間</th>
-                                        <th style={{ width: '120px', fontSize: '12px' }}>證據狀態</th>
-                                        <th style={{ width: '120px', fontSize: '12px' }}>證據品質</th>
+                                        <th style={{ width: '80px', fontSize: '13px' }}>狀態</th>
+                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th> {/* 這裡將會是可以點的按鈕 */}
+                                        <th style={{ minWidth: '150px', fontSize: '13px' }}>文本</th>
+                                        <th style={{ width: '150px', fontSize: '13px' }}>已重標次數</th>
+                                        <th style={{ width: '120px', fontSize: '13px' }}>承諾狀態</th>
+                                        <th style={{ width: '120px', fontSize: '13px' }}>驗證時間</th>
+                                        <th style={{ width: '120px', fontSize: '13px' }}>證據狀態</th>
+                                        <th style={{ width: '120px', fontSize: '13px' }}>證據品質</th>
                                         <th style={{ width: '150px' }}>操作</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {reannotationList.map((task, index) => {
-                                        // 輔助函式：分數樣式 (維持原本邏輯，低分紅字)
+                                        // 輔助函式：分數樣式 (低分紅字)
                                         const getScoreStyle = (score) => ({
                                             fontWeight: '700',
                                             fontFamily: 'monospace',
@@ -2173,20 +2251,40 @@ return (
 
                                         return (
                                             <tr key={task.id || index}>
+                                                {/* 狀態燈號 */}
                                                 <td data-label="狀態">
-                                                    {/* 燈號邏輯：已檢視 = 綠燈、未檢視 = 紅燈 */}
-                                                    <span className={`status-dot ${task.is_reviewed ? 'green' : 'red'}`}></span>
+                                                    {/* 邏輯：modify_count > 0 ? 綠 : 紅 */}
+                                                    <span className={`status-dot ${task.modify_count > 0 ? 'green' : 'red'}`}></span>
                                                 </td>
+                                                
+                                                {/* 資料筆數 (按鈕) - 顯示重標註紀錄 */}
                                                 <td data-label="資料">
-                                                    <strong>第 {task.sequence} 筆</strong>
+                                                    <button 
+                                                        onClick={() => handleShowHistory(task)}
+                                                        style={{ 
+                                                            background: 'none', border: 'none', 
+                                                            color: '#2563eb', fontWeight: 'bold', 
+                                                            cursor: 'pointer', textDecoration: 'underline' 
+                                                        }}
+                                                        title="點擊查看修改歷史"
+                                                    >
+                                                        第 {task.sequence} 筆
+                                                    </button>
                                                 </td>
+
+                                                {/* 文本預覽欄位 */}
                                                 <td data-label="文本">
-                                                    <div className="text-preview" title={task.preview_text}>
+                                                <div className="text-preview" title={task.preview_text}>
                                                         {task.preview_text}
                                                     </div>
                                                 </td>
                                                 
-                                                {/* 顯示四個細項分數 */}
+                                                {/* 已重標次數欄位 */}
+                                                <td data-label="已重標次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                                                    {task.modify_count}
+                                                </td>
+                                                
+                                                {/* 一致性分數欄位 - 四大維度 */}
                                                 <td data-label="承諾狀態分">
                                                     <span style={getScoreStyle(task.s_promise)}>{fmt(task.s_promise)}</span>
                                                 </td>
@@ -2200,22 +2298,21 @@ return (
                                                     <span style={getScoreStyle(task.s_quality)}>{fmt(task.s_quality)}</span>
                                                 </td>
 
+                                                {/* 重標註按鈕欄位 */}
                                                 <td data-label="操作">
-                                                {/* 按鈕樣式與文字邏輯 */}
-                                                <button 
-                                                    className="btn-reannotate"
-                                                    style={{
-                                                        // 透過 inline style 覆蓋原本的橘色背景
-                                                        // 已檢視 -> 綠色 (#10b981), 未檢視 -> 橘色 (#f59e0b)
-                                                        backgroundColor: task.is_reviewed ? '#10b981' : '#f59e0b',
-                                                        transition: 'background-color 0.3s'
-                                                    }}
-                                                    onClick={() => {
-                                                        handleSequenceJump({ target: { value: task.sequence } });
-                                                    }}
-                                                >
-                                                    {task.is_reviewed ? '再次檢視' : '重標註'}
-                                                </button>
+                                                    <button 
+                                                        className="btn-reannotate"
+                                                        style={{
+                                                            // 邏輯：modify_count > 0 ? 綠(再次檢視) : 橘(重標註)
+                                                            backgroundColor: task.modify_count > 0 ? '#10b981' : '#f59e0b',
+                                                            transition: 'background-color 0.3s'
+                                                        }}
+                                                        onClick={() => {
+                                                            handleSequenceJump({ target: { value: task.sequence } });
+                                                        }}
+                                                    >
+                                                        {task.modify_count > 0 ? '再次檢視' : '重標註'}
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );

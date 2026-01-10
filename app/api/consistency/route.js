@@ -17,7 +17,6 @@ export async function GET(request) {
 
     try {
         // --- 1. 從資料庫撈資料 ---
-        // 多撈一個 reannotation_round 欄位
         const result = await sql`
             WITH ProjectSource AS (
                 SELECT 
@@ -26,6 +25,13 @@ export async function GET(request) {
                     ROW_NUMBER() OVER (ORDER BY id ASC) as sequence
                 FROM source_data
                 WHERE project_id = ${projectId}
+            ),
+            -- 計算每個任務被該使用者修改過幾次
+            ModificationCounts AS (
+                SELECT source_data_id, COUNT(*) as modify_count
+                FROM reannotation_audit_log
+                WHERE user_id = ${userId}
+                GROUP BY source_data_id
             )
             SELECT 
                 a.source_data_id,
@@ -34,11 +40,13 @@ export async function GET(request) {
                 a.verification_timeline,
                 a.evidence_status,
                 a.evidence_quality,
-                a.reannotation_round,  -- 撈取重標註輪次
+                a.reannotation_round,
                 ps.sequence,
-                ps.original_data
+                ps.original_data,
+                COALESCE(mc.modify_count, 0) as modify_count  -- 取出次數，若無則為0
             FROM annotations a
             JOIN ProjectSource ps ON a.source_data_id = ps.id
+            LEFT JOIN ModificationCounts mc ON a.source_data_id = mc.source_data_id
         `;
 
         const rows = result.rows;
@@ -67,20 +75,16 @@ export async function GET(request) {
                 if (!taskMap[uid]) {
                     const row = rows.find(r => r.source_data_id == uid);
                     
-                    // 判斷該使用者是否已完成
-                    // 邏輯：先找到這個 user 在這一題的標註資料
-                    const userAnnotation = rows.find(r => r.source_data_id == uid && r.user_id == userId);
+                    // 判斷邏輯：
+                    // 1. 分數完美 (全1.0) -> 綠燈
+                    // 2. 或者，已重標次數 >= 1 -> 綠燈
+                    const modifyCount = row ? parseInt(row.modify_count) : 0;
                     
-                    // 如果有找到資料，且 (reannotation_round > 0 代表修過) 
-                    // 或者是系統沒有這個人的資料(可能不用標)，也可以預設為 true 避免紅燈
-                    const userHasReviewed = userAnnotation ? (userAnnotation.reannotation_round > 0) : false;
-
                     taskMap[uid] = { 
                         id: uid, 
                         sequence: row ? row.sequence : 0, 
                         preview_text: row && row.original_data ? row.original_data.substring(0, 30) + "..." : "無文本",
-                        // 暫存使用者的重標狀態
-                        _userHasReviewed: userHasReviewed
+                        _modifyCount: modifyCount // 暫存次數
                     };
                 }
                 
@@ -96,18 +100,19 @@ export async function GET(request) {
 
         // --- 4. 格式化輸出與狀態判定 ---
         const tasks = Object.values(taskMap).map(t => {
-            // 補零
             const s_p = t.s_promise ?? 1;
             const s_t = t.s_timeline ?? 1;
             const s_e = t.s_evidence ?? 1;
             const s_q = t.s_quality ?? 1;
 
-            // 判斷是否顯示「綠燈 (已檢視)」
-            // 條件 A: 分數全部都是 1.0 (完全一致，無需再標)
+            // 篩選邏輯判斷 (前端會用到)
+            // 是否有任何一個分數低於 0.8
+            const hasLowScore = (s_p < 0.8 || s_t < 0.8 || s_e < 0.8 || s_q < 0.8);
+
+            // 狀態燈號邏輯
+            // 如果所有分數都完美(=1)，或者修改次數 >= 1，都算已完成(is_reviewed)
             const isPerfect = (s_p === 1 && s_t === 1 && s_e === 1 && s_q === 1);
-            
-            // 條件 B: 使用者已經送出過重標註 (Round > 0)
-            const isDoneByUser = t._userHasReviewed;
+            const isReviewed = isPerfect || t._modifyCount >= 1;
 
             return {
                 ...t,
@@ -115,8 +120,9 @@ export async function GET(request) {
                 s_timeline: s_t,
                 s_evidence: s_e,
                 s_quality: s_q,
-                // 只要「完全一致」或「我已修過」，就給綠燈
-                is_reviewed: isPerfect || isDoneByUser 
+                is_reviewed: isReviewed,
+                modify_count: t._modifyCount,   // 傳回前端顯示
+                needs_reannotation: hasLowScore // 標記是否需要重標 (低於0.8)
             };
         }).sort((a, b) => a.sequence - b.sequence);
 
