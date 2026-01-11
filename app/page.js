@@ -810,7 +810,6 @@ function HistoryModal({ isOpen, onClose, history, loading }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                         <thead>
                             <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                                {/* 階段欄位 */}
                                 <th style={{ padding: '8px', textAlign: 'left', width: '110px' }}>階段</th>
                                 <th style={{ padding: '8px', textAlign: 'left', width: '155px' }}>時間</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>變更欄位</th>
@@ -2258,7 +2257,7 @@ return (
                                 <thead>
                                     <tr>
                                         <th style={{ width: '80px', fontSize: '13px' }}>狀態</th>
-                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th> {/* 這裡將會是可以點的按鈕 */}
+                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th>
                                         <th style={{ minWidth: '150px', fontSize: '13px' }}>文本</th>
                                         <th style={{ width: '150px', fontSize: '13px' }}>已重標次數</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>承諾狀態</th>
