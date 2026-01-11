@@ -1055,6 +1055,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const handleSaveAndNext = async () => {
         if (!currentItem) return;
 
+        // --- 1. 表單驗證 ---
         if (!promiseStatus) return alert('請選擇承諾狀態');
 
         const promiseText = getHighlightedText('promise');
@@ -1074,6 +1075,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             }
         }
 
+        // --- 2. 準備並儲存資料 ---
         const annotationData = {
             source_data_id: currentItem.id,
             user_id: user.id,
@@ -1092,9 +1094,10 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             return;
         }
 
-        // 存檔成功後，立刻重新抓取列表，即時更新重標註頁面狀態燈號與一致性分數
+        // 存檔成功後，立刻重新抓取後端最新的分數列表，確保紅綠燈即時變更
         await fetchProjectReannotationTasks();
 
+        // --- 3. 清理當前畫面狀態 ---
         // 清除所有標記（切換到下一筆時重置）
         if (dataTextRef.current && currentItem) {
             dataTextRef.current.innerHTML = currentItem.original_data;
@@ -1105,17 +1108,46 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         setEvidenceStatus('');
         setEvidenceQuality('');
 
-        // 載入當前項目之後的下一筆（不管是否已標註）
-        const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
-        if (nextRes.task) {
-            setCurrentItem(nextRes.task);
-            loadTaskData(nextRes.task);
+        // --- 4. 判斷並載入下一筆任務 ---
+        let nextTask = null;
+
+        // 優先邏輯：如果重標註列表有資料，嘗試從列表中找下一筆
+        if (reannotationList && reannotationList.length > 0) {
+            // 找出當前這筆在列表中的位置
+            const currentIndex = reannotationList.findIndex(t => t.id === currentItem.id);
+            
+            // 如果這筆在列表裡，而且後面還有資料，就抓下一筆
+            if (currentIndex !== -1 && currentIndex < reannotationList.length - 1) {
+                const nextInList = reannotationList[currentIndex + 1];
+                
+                // 為了保險，用 ID 再去後端抓一次完整資料
+                const res = await getTaskBySequence(project.id, user.id, nextInList.sequence);
+                if (res.task) {
+                    nextTask = res.task;
+                }
+            }
+        }
+
+        // [備案] 邏輯：如果在重標清單裡找不到（例如已經修完最後一筆紅燈），或是清單是空的
+        // 就維持原本的行為：依照物理順序抓下一筆
+        if (!nextTask) {
+             const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
+             nextTask = nextRes.task;
+        }
+
+        // 執行跳轉
+        if (nextTask) {
+            setCurrentItem(nextTask);
+            loadTaskData(nextTask); // 使用現有的函式來載入資料與高亮
+            
+            // 更新網址 (選用，讓瀏覽器上一頁/下一頁能運作)
+            window.history.pushState(null, '', `?project=${project.id}&sequence=${nextTask.sequence}`);
         } else {
             // 如果沒有下一筆，顯示完成訊息
             setCurrentItem(null);
         }
 
-        // 更新進度
+        // --- 5. 更新全域狀態 (進度條、下拉選單) ---
         const projRes = await getProjectsWithProgress(user.id);
         const proj = projRes.projects?.find(p => p.id === project.id);
         if (proj) setProgress({
@@ -1123,18 +1155,14 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             total: parseInt(proj.total_tasks) || 0
         });
 
-        // 重新載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
         if (allTasksRes.tasks) {
-            // 先去重
             const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
             setAllTasks(uniqueTasks);
-            
             const skipped = uniqueTasks.filter(t => t.skipped === true).length;
             setSkippedCount(skipped);
         }
 
-        // 如果有驗證結果，重新驗證以更新警告框
         if (validationResult) {
             const newValidation = await validateCompletedAnnotations(project.id, user.id);
             if (!newValidation.error) {
