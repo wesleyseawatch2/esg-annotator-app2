@@ -19,21 +19,14 @@ export async function GET(request) {
         // --- 1. 從資料庫撈資料 ---
         const result = await sql`
             WITH ProjectSource AS (
-                SELECT 
-                    id, 
+                SELECT
+                    id,
                     original_data,
                     ROW_NUMBER() OVER (ORDER BY id ASC) as sequence
                 FROM source_data
                 WHERE project_id = ${projectId}
-            ),
-            -- 計算每個任務被該使用者儲存過幾次（依照不同的 changed_at 時間戳）
-            ModificationCounts AS (
-                SELECT source_data_id, COUNT(DISTINCT DATE_TRUNC('second', changed_at)) as modify_count
-                FROM reannotation_audit_log
-                WHERE user_id = ${userId}
-                GROUP BY source_data_id
             )
-            SELECT 
+            SELECT
                 a.source_data_id,
                 a.user_id,
                 a.promise_status,
@@ -41,12 +34,12 @@ export async function GET(request) {
                 a.evidence_status,
                 a.evidence_quality,
                 a.reannotation_round,
+                a.save_count as modify_count,
                 ps.sequence,
-                ps.original_data,
-                COALESCE(mc.modify_count, 0) as modify_count  -- 取出次數，若無則為0
+                ps.original_data
             FROM annotations a
             JOIN ProjectSource ps ON a.source_data_id = ps.id
-            LEFT JOIN ModificationCounts mc ON a.source_data_id = mc.source_data_id
+            WHERE a.user_id = ${userId}
         `;
 
         const rows = result.rows;

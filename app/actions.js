@@ -595,14 +595,14 @@ export async function saveAnnotation(data) {
       }
     }
 
-    // 3. 儲存/更新
+    // 3. 儲存/更新（並增加 save_count）
     await sql`
       INSERT INTO annotations (
         source_data_id, user_id, esg_type, promise_status, promise_string,
-        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, version, updated_at
+        verification_timeline, evidence_status, evidence_string, evidence_quality, status, skipped, version, save_count, updated_at
       ) VALUES (
         ${source_data_id}, ${user_id}, ${esgTypeArray}, ${promise_status}, ${promise_string},
-        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, 1, NOW()
+        ${verification_timeline}, ${evidence_status}, ${evidence_string}, ${evidence_quality}, 'completed', ${isSkipped}, 1, 1, NOW()
       )
       ON CONFLICT (source_data_id, user_id, version)
       DO UPDATE SET
@@ -615,6 +615,7 @@ export async function saveAnnotation(data) {
         evidence_quality = EXCLUDED.evidence_quality,
         status = 'completed',
         skipped = EXCLUDED.skipped,
+        save_count = annotations.save_count + 1,
         updated_at = NOW();
     `;
     revalidatePath('/');
