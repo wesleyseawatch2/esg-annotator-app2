@@ -1045,11 +1045,28 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
 
     useEffect(() => {
         const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
-        
+
         if (isProjectCompleted) {
             fetchProjectReannotationTasks();
         }
     }, [currentItem, progress, skippedCount]); // 監聽這些變數變化
+
+    // 當頁面重新獲得焦點時（從其他頁面返回），重新載入一致性分數
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // 只在專案完成時才重新載入
+            const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
+            if (!document.hidden && isProjectCompleted && project && user) {
+                fetchProjectReannotationTasks();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [currentItem, progress, skippedCount, project, user]); // 監聽相關變數
 
     const handleSaveAndNext = async () => {
         if (!currentItem) return;
