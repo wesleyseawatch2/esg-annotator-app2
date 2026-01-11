@@ -2255,7 +2255,7 @@ return (
                                         <th style={{ width: '80px', fontSize: '13px' }}>狀態</th>
                                         <th style={{ width: '90px', fontSize: '13px' }}>資料</th>
                                         <th style={{ minWidth: '150px', fontSize: '13px' }}>文本</th>
-                                        <th style={{ width: '150px', fontSize: '13px' }}>已重標次數</th>
+                                        <th style={{ width: '150px', fontSize: '13px' }}>儲存次數</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>承諾狀態</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>驗證時間</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>證據狀態</th>
@@ -2303,8 +2303,8 @@ return (
                                                     </div>
                                                 </td>
                                                 
-                                                {/* 已重標次數欄位 */}
-                                                <td data-label="已重標次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                                                {/* 儲存次數欄位 */}
+                                                <td data-label="儲存次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
                                                     {task.modify_count}
                                                 </td>
                                                 
