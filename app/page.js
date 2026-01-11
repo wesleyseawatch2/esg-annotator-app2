@@ -1935,11 +1935,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 1. 將內容還原為原始資料 (移除所有 span 標籤)
         dataTextRef.current.innerHTML = currentItem.original_data;
 
-        // 2. 清空紀錄的字串狀態
-        setPromiseString('');
-        setEvidenceString('');
-        
-        // 3. 清除當前的瀏覽器選取範圍
+        // 2. 清除當前的瀏覽器選取範圍
         const selection = window.getSelection();
         if (selection) selection.removeAllRanges();
     };
@@ -2397,14 +2393,14 @@ return (
                                     選取後標記：
                                 </span>
                                 <button
-                                    className="btn" 
+                                    className="btn"
                                     style={{
                                         backgroundColor: '#f9f2d2ff',
                                         color: '#282828ff',
                                         border: '1px solid #eab308',
                                         fontWeight: '600'
                                     }}
-                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('promise'); }}
+                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('promise'); }}
                                 >
                                     承諾語句
                                 </button>
@@ -2416,14 +2412,14 @@ return (
                                         border: '1px solid #79b3faff',
                                         fontWeight: '600'
                                     }}
-                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('evidence'); }}
+                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('evidence'); }}
                                 >
                                     證據語句
                                 </button>
 
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={(e) => { e.preventDefault(); removeHighlight(); }}
+                                    onMouseDown={(e) => { e.preventDefault(); clearSelectedHighlights(); }}
                                     title="請先選取要清除的標記文字範圍，再點擊此按鈕"
                                 >
                                     清除選取標記

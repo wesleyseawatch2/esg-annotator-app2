@@ -60,6 +60,7 @@ export async function getProjectsWithProgress(userId) {
             AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
             AND a.status = 'completed'
             AND (a.skipped IS NULL OR a.skipped = FALSE)
+            AND a.version = 1
           ) as completed_tasks
         FROM projects p
         LEFT JOIN project_groups pg ON p.group_id = pg.id
@@ -83,6 +84,7 @@ export async function getProjectsWithProgress(userId) {
             AND a.source_data_id IN (SELECT id FROM source_data WHERE project_id = p.id)
             AND a.status = 'completed'
             AND (a.skipped IS NULL OR a.skipped = FALSE)
+            AND a.version = 1
           ) as completed_tasks
         FROM projects p
         LEFT JOIN project_groups pg ON p.group_id = pg.id
@@ -170,7 +172,7 @@ export async function getProjectTasksOverview(projectId, userId) {
         a.is_marked,
         ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
       FROM source_data sd
-      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId} AND a.version = 1
       WHERE sd.project_id = ${projectId}
       ORDER BY sd.page_number ASC, sd.id ASC;
     `;
@@ -248,7 +250,7 @@ export async function getNextTaskAfterCurrent(projectId, userId, currentId) {
           a.evidence_quality,
           ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as row_num
         FROM source_data sd
-        LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+        LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId} AND a.version = 1
         WHERE sd.project_id = ${projectId}
       ),
       current_row AS (
@@ -310,7 +312,7 @@ export async function getTaskByPageNumber(projectId, userId, pageNumber) {
         a.evidence_quality,
         a.skipped
       FROM source_data sd
-      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId} AND a.version = 1
       WHERE sd.project_id = ${projectId}
       AND sd.page_number = ${pageNumber}
       ORDER BY sd.id ASC
@@ -343,7 +345,7 @@ export async function getAllTasksWithStatus(projectId, userId) {
         a.evidence_string,
         ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
       FROM source_data sd
-      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+      LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId} AND a.version = 1
       WHERE sd.project_id = ${projectId}
       ORDER BY sd.page_number ASC, sd.id ASC;
     `;
@@ -493,7 +495,7 @@ export async function getTaskBySequence(projectId, userId, sequence) {
           a.is_marked,
           ROW_NUMBER() OVER (ORDER BY sd.page_number ASC, sd.id ASC) as sequence
         FROM source_data sd
-        LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId}
+        LEFT JOIN annotations a ON sd.id = a.source_data_id AND a.user_id = ${userId} AND a.version = 1
         WHERE sd.project_id = ${projectId}
       )
       SELECT * FROM numbered_tasks
