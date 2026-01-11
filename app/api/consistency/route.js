@@ -26,9 +26,9 @@ export async function GET(request) {
                 FROM source_data
                 WHERE project_id = ${projectId}
             ),
-            -- 計算每個任務被該使用者修改過幾次
+            -- 計算每個任務被該使用者儲存過幾次（依照不同的 changed_at 時間戳）
             ModificationCounts AS (
-                SELECT source_data_id, COUNT(*) as modify_count
+                SELECT source_data_id, COUNT(DISTINCT DATE_TRUNC('second', changed_at)) as modify_count
                 FROM reannotation_audit_log
                 WHERE user_id = ${userId}
                 GROUP BY source_data_id
