@@ -810,7 +810,6 @@ function HistoryModal({ isOpen, onClose, history, loading }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                         <thead>
                             <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                                {/* 階段欄位 */}
                                 <th style={{ padding: '8px', textAlign: 'left', width: '110px' }}>階段</th>
                                 <th style={{ padding: '8px', textAlign: 'left', width: '155px' }}>時間</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>變更欄位</th>
@@ -1046,11 +1045,28 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
 
     useEffect(() => {
         const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
-        
+
         if (isProjectCompleted) {
             fetchProjectReannotationTasks();
         }
     }, [currentItem, progress, skippedCount]); // 監聽這些變數變化
+
+    // 當頁面重新獲得焦點時（從其他頁面返回），重新載入一致性分數
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // 只在專案完成時才重新載入
+            const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
+            if (!document.hidden && isProjectCompleted && project && user) {
+                fetchProjectReannotationTasks();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [currentItem, progress, skippedCount, project, user]); // 監聽相關變數
 
     const handleSaveAndNext = async () => {
         if (!currentItem) return;
@@ -1964,11 +1980,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 1. 將內容還原為原始資料 (移除所有 span 標籤)
         dataTextRef.current.innerHTML = currentItem.original_data;
 
-        // 2. 清空紀錄的字串狀態
-        setPromiseString('');
-        setEvidenceString('');
-        
-        // 3. 清除當前的瀏覽器選取範圍
+        // 2. 清除當前的瀏覽器選取範圍
         const selection = window.getSelection();
         if (selection) selection.removeAllRanges();
     };
@@ -2286,9 +2298,9 @@ return (
                                 <thead>
                                     <tr>
                                         <th style={{ width: '80px', fontSize: '13px' }}>狀態</th>
-                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th> {/* 這裡將會是可以點的按鈕 */}
+                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th>
                                         <th style={{ minWidth: '150px', fontSize: '13px' }}>文本</th>
-                                        <th style={{ width: '150px', fontSize: '13px' }}>已重標次數</th>
+                                        <th style={{ width: '150px', fontSize: '13px' }}>儲存次數</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>承諾狀態</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>驗證時間</th>
                                         <th style={{ width: '120px', fontSize: '13px' }}>證據狀態</th>
@@ -2336,8 +2348,8 @@ return (
                                                     </div>
                                                 </td>
                                                 
-                                                {/* 已重標次數欄位 */}
-                                                <td data-label="已重標次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                                                {/* 儲存次數欄位 */}
+                                                <td data-label="儲存次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
                                                     {task.modify_count}
                                                 </td>
                                                 
@@ -2426,14 +2438,14 @@ return (
                                     選取後標記：
                                 </span>
                                 <button
-                                    className="btn" 
+                                    className="btn"
                                     style={{
                                         backgroundColor: '#f9f2d2ff',
                                         color: '#282828ff',
                                         border: '1px solid #eab308',
                                         fontWeight: '600'
                                     }}
-                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('promise'); }}
+                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('promise'); }}
                                 >
                                     承諾語句
                                 </button>
@@ -2445,14 +2457,14 @@ return (
                                         border: '1px solid #79b3faff',
                                         fontWeight: '600'
                                     }}
-                                    onMouseDown={(e) => { e.preventDefault(); applyHighlight('evidence'); }}
+                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('evidence'); }}
                                 >
                                     證據語句
                                 </button>
 
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={(e) => { e.preventDefault(); removeHighlight(); }}
+                                    onMouseDown={(e) => { e.preventDefault(); clearSelectedHighlights(); }}
                                     title="請先選取要清除的標記文字範圍，再點擊此按鈕"
                                 >
                                     清除選取標記

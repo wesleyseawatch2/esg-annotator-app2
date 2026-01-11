@@ -42,6 +42,31 @@ export default function ReannotationPage() {
     }
   }, [router]);
 
+  // 當頁面重新顯示時（從重標註詳細頁面返回），重新載入資料
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        loadQueue(user.id);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 也監聽 focus 事件（從其他頁面返回時）
+    const handleFocus = () => {
+      if (user) {
+        loadQueue(user.id);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user]);
+
   const loadQueue = async (userId) => {
     setLoading(true);
     try {
