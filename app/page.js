@@ -1022,15 +1022,22 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
 
     // 抓取該專案重標註任務的函式
     const fetchProjectReannotationTasks = async () => {
+        // 安全檢查：如果沒有專案或使用者資訊，直接不執行
+        if (!project || !project.id || !user || !user.id) return;
+
         setLoadingReannotation(true);
         try {
             // 呼叫 Next.js API（app/api/consistency/route.js）
             const response = await fetch(`/api/consistency?projectId=${project.id}&userId=${user.id}`);
             const result = await response.json();
             
+            // 檢查回應狀態，避免伺服器錯誤導致崩潰
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+
             if (result.success && Array.isArray(result.tasks)) {
-            // 只留下「需要重標註 (分數 < 0.8)」
-            // 或者是「使用者已經開始修了 (modify_count > 0)」的資料，方便回頭看
+            // 只留下「需要重標註 (分數 < 0.8)」或者「已修正過 (modify_count > 0)」的資料
                 const filteredTasks = result.tasks.filter(t => t.needs_reannotation || t.modify_count > 0);
                 setReannotationList(filteredTasks);
             } else {
@@ -1163,22 +1170,28 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             setCurrentItem(null);
         }
 
-        // --- 5. 更新全域狀態 (進度條、下拉選單) ---
-        const projRes = await getProjectsWithProgress(user.id);
-        const proj = projRes.projects?.find(p => p.id === project.id);
-        if (proj) setProgress({
-            completed: parseInt(proj.completed_tasks) || 0,
-            total: parseInt(proj.total_tasks) || 0
-        });
+        // --- 5. 樂觀更新全域狀態 (進度條、下拉選單) ---
+        
+        // A. 更新下拉選單的狀態 (allTasks)
+        setAllTasks(prevTasks => prevTasks.map(t => {
+            if (t.id === annotationData.source_data_id) {
+                // 如果這筆原本沒完成，現在完成了，要順便加進度
+                return { ...t, status: 'completed', skipped: false };
+            }
+            return t;
+        }));
 
-        const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
-        if (allTasksRes.tasks) {
-            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
-            setAllTasks(uniqueTasks);
-            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
-            setSkippedCount(skipped);
+        // B. 更新進度條 (Progress)
+        // 先檢查這筆任務在更新前是不是「未完成」的，如果是，進度才 +1
+        const targetTask = allTasks.find(t => t.id === annotationData.source_data_id);
+        if (targetTask && targetTask.status !== 'completed') {
+            setProgress(prev => ({
+                ...prev,
+                completed: prev.completed + 1
+            }));
         }
 
+        // C. 如果有驗證結果，重新驗證以更新警告框 (這部分維持原樣，或也可以選擇暫時隱藏)
         if (validationResult) {
             const newValidation = await validateCompletedAnnotations(project.id, user.id);
             if (!newValidation.error) {
@@ -1765,18 +1778,27 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         
         const range = selection.getRangeAt(0);
         const container = dataTextRef.current;
-        if (!container.contains(range.commonAncestorContainer)) return;
         
-        const span = document.createElement('span');
-        span.className = `highlight-${type}`;
-        
-        try {
-            range.surroundContents(span);
-        } catch (err) {
-            console.warn('無法標記選取範圍:', err);
+        // 檢查選取範圍是否在文本框內
+        if (!container.contains(range.commonAncestorContainer)) {
+            // 有時候使用者選太快會選到外面，這裡做個寬容檢查
+            return; 
         }
         
-        selection.removeAllRanges();
+        try {
+            const span = document.createElement('span');
+            span.className = `highlight-${type}`;
+            
+            // 使用 extractContents + insert 比較不會因為跨標籤而報錯
+            span.appendChild(range.extractContents());
+            range.insertNode(span);
+            
+            // 清除選取狀態
+            selection.removeAllRanges();
+        } catch (err) {
+            console.warn('標記失敗:', err);
+            alert('標記失敗：請試著不要選取到已經標記過的文字邊界，或分段選取。');
+        }
     };
 
     const getHighlightedText = (type) => {
@@ -2132,7 +2154,7 @@ return (
                                 📚 參考資料：
                             </span>
                             <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📖 AI CUP 標註手冊 V2
+                                📖 AI CUP 標註手冊
                             </a>
                             <span style={{ color: '#cbd5e1' }}>|</span>
                             <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
@@ -2283,9 +2305,18 @@ return (
                         </div>
                     </div>
 
-                    {/* 2. 重標註任務列表 (如果有資料才顯示) */}
-                    {reannotationList.length > 0 && (
+                    {/* 載入中狀態 */}
+                    {loadingReannotation && (
+                        <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
+                            <div className="spinner" style={{ margin: '0 auto 10px auto' }}></div>
+                            <span style={{ color: '#6b7280', fontWeight: 'bold' }}>正在分析一致性分數與重標註清單，請稍候...</span>
+                        </div>
+                    )}
+
+                    {/* 2. 重標註任務列表 (只在非載入中且有資料時顯示) */}
+                    {!loadingReannotation && reannotationList.length > 0 && (
                         <div className="reannotation-container">
+                            {/* ... (這裡面的內容維持不變) ... */}
                             <div className="reannotation-header">
                                 <h3>📋 重標註項目 ({reannotationList.length} 筆)</h3>
                                 <span style={{ fontSize: '13px', color: '#64748b' }}>
@@ -2392,8 +2423,8 @@ return (
                     </div>
                 )}
 
-                    {/* 無重標註資料時的提示 */}
-                    {reannotationList.length === 0 && !loadingReannotation && (
+                   {/* 無重標註資料時的提示 (只在非載入中且無資料時顯示) */}
+                    {!loadingReannotation && reannotationList.length === 0 && (
                         <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
                             沒有需要重標註的任務，辛苦了👍！
                         </div>

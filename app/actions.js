@@ -558,9 +558,9 @@ export async function saveAnnotation(data) {
         { key: 'verification_timeline', label: '驗證時間軸' },
         { key: 'evidence_status', label: '證據狀態' },
         { key: 'evidence_quality', label: '證據品質' },
-        // 字串類欄位若太長，可考慮截斷或只記「已修改」
         { key: 'promise_string', label: '承諾標記' },
-        { key: 'evidence_string', label: '證據標記' }
+        { key: 'evidence_string', label: '證據標記' },
+        { key: 'esg_type', label: 'ESG 類型' }
       ];
 
       fieldsToCheck.forEach(field => {
