@@ -6,7 +6,7 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const format = searchParams.get('format') || 'json'; // 'json' or 'csv'
 
-        // 1. 獲取所有完成的初次標註專案
+        // 1. 獲取所有初次標註專案（不管是否完成）
         const initialProjects = await sql`
             SELECT DISTINCT
                 p.id as project_id,
@@ -20,15 +20,11 @@ export async function GET(request) {
                 JOIN source_data sd ON a.source_data_id = sd.id
                 WHERE sd.project_id = p.id
                     AND a.reannotation_round = 0
-                    AND a.status = 'completed'
-                    AND (a.skipped IS NULL OR a.skipped = FALSE)
-                GROUP BY sd.id
-                HAVING COUNT(DISTINCT a.user_id) >= 3
             )
             ORDER BY pg.name, p.name
         `;
 
-        // 2. 獲取所有完成的重標註輪次
+        // 2. 獲取所有重標註輪次（不管是否完成）
         const reannotationRounds = await sql`
             SELECT
                 rr.id as round_id,
@@ -40,16 +36,12 @@ export async function GET(request) {
             FROM reannotation_rounds rr
             JOIN projects p ON rr.project_id = p.id
             LEFT JOIN project_groups pg ON p.group_id = pg.id
-            JOIN reannotation_tasks rt ON rt.round_id = rr.id
-            WHERE rt.status IN ('submitted', 'skipped')
-            GROUP BY rr.id, rr.project_id, p.name, pg.name, rr.round_number, rr.task_group
-            HAVING COUNT(DISTINCT rt.user_id) >= 3
             ORDER BY pg.name, p.name, rr.round_number, rr.task_group
         `;
 
         const allAnnotations = [];
 
-        // 3. 處理初次標註專案
+        // 3. 處理初次標註專案（包含所有狀態）
         for (const project of initialProjects.rows) {
             const annotations = await sql`
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
@@ -63,14 +55,14 @@ export async function GET(request) {
                     a.evidence_quality,
                     a.persist_answer,
                     a.reannotation_comment,
+                    a.status,
+                    a.skipped,
                     a.created_at
                 FROM annotations a
                 JOIN source_data sd ON a.source_data_id = sd.id
                 JOIN users u ON a.user_id = u.id
                 WHERE sd.project_id = ${project.project_id}
                     AND a.reannotation_round = 0
-                    AND a.status = 'completed'
-                    AND (a.skipped IS NULL OR a.skipped = FALSE)
                 ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
             `;
 
@@ -91,12 +83,14 @@ export async function GET(request) {
                     evidence_quality: ann.evidence_quality,
                     persist_answer: ann.persist_answer,
                     reannotation_comment: ann.reannotation_comment,
+                    status: ann.status,
+                    skipped: ann.skipped,
                     created_at: ann.created_at
                 });
             });
         }
 
-        // 4. 處理重標註輪次（混合重標註和原始資料）
+        // 4. 處理重標註輪次（包含所有狀態，混合重標註和原始資料）
         for (const round of reannotationRounds.rows) {
             const annotations = await sql`
                 WITH reannotated_data AS (
@@ -154,13 +148,13 @@ export async function GET(request) {
                     a.evidence_quality,
                     a.persist_answer,
                     a.reannotation_comment,
+                    a.status,
+                    a.skipped,
                     a.created_at
                 FROM (
                     SELECT * FROM reannotated_data
-                    WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
                     UNION ALL
                     SELECT * FROM original_data
-                    WHERE status = 'completed' AND (skipped IS NULL OR skipped = FALSE)
                 ) a
                 JOIN source_data sd ON a.source_data_id = sd.id
                 JOIN users u ON a.user_id = u.id
@@ -185,6 +179,8 @@ export async function GET(request) {
                     evidence_quality: ann.evidence_quality,
                     persist_answer: ann.persist_answer,
                     reannotation_comment: ann.reannotation_comment,
+                    status: ann.status,
+                    skipped: ann.skipped,
                     created_at: ann.created_at
                 });
             });
@@ -197,7 +193,7 @@ export async function GET(request) {
                 '組別', '專案名稱', '標註類型', '輪次', '任務組別',
                 '資料ID', '原始文本', '用戶ID', '用戶名稱',
                 '承諾狀態', '驗證時間', '證據狀態', '證據品質',
-                '堅持答案', '重標註備註', '標註時間'
+                '堅持答案', '重標註備註', '狀態', '已跳過', '標註時間'
             ];
 
             const csvRows = allAnnotations.map(ann => {
@@ -228,6 +224,8 @@ export async function GET(request) {
                     escapeCSV(ann.evidence_quality || ''),
                     escapeCSV(ann.persist_answer || ''),
                     escapeCSV(ann.reannotation_comment || ''),
+                    escapeCSV(ann.status || ''),
+                    escapeCSV(ann.skipped ? '是' : '否'),
                     escapeCSV(ann.created_at ? new Date(ann.created_at).toLocaleString('zh-TW') : '')
                 ].join(',');
             });

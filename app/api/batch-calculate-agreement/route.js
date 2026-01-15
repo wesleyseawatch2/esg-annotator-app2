@@ -110,74 +110,36 @@ function calculateKrippendorffsAlpha(data) {
 
 /**
  * 計算 Local Alpha (單題爭議程度)
- * 使用與 calculate-agreement 相同的演算法
+ * 使用簡化的同意比例方法，更符合直覺且保證在 0-1 範圍內
  * @param {Array} itemData - 單一題目的所有評分者答案 (包含 'N/A')
- * @param {Array<Array>} allData - 完整的資料矩陣 (包含 'N/A'),用於計算 De
- * @returns {number} - Local Alpha 分數
+ * @param {Array<Array>} allData - 完整的資料矩陣 (包含 'N/A'),用於計算 De（此參數保留但不使用）
+ * @returns {number} - Local Alpha 分數 (0-1 之間)
  */
 function calculateLocalAlpha(itemData, allData) {
-    const values = itemData;
+    const values = itemData.filter(v => v !== 'N/A' && v !== null && v !== undefined);
     const m = values.length;
 
+    // 如果沒有有效值或只有 1 個評分者，返回 NaN
     if (m < 2) return NaN;
 
-    // 計算整體資料的唯一值 (包括 'N/A')
-    const allValuesSet = new Set();
-    allData.forEach(row => {
-        row.forEach(val => {
-            allValuesSet.add(val);
-        });
-    });
+    // 計算 pairwise agreement
+    // 對於 nominal data，Local Alpha = 比例一致的配對數 / 總配對數
+    let agreementCount = 0;
+    let totalPairs = 0;
 
-    const uniqueVals = Array.from(allValuesSet);
-
-    // 計算整體的 De (expected disagreement)
-    const flattened = [];
-    allData.forEach(row => {
-        row.forEach(val => {
-            flattened.push(val);
-        });
-    });
-
-    const nTotal = flattened.length;
-    if (nTotal === 0) return NaN;
-
-    const counts = {};
-    uniqueVals.forEach(v => {
-        counts[v] = flattened.filter(val => val === v).length;
-    });
-
-    let sumNcSq = 0;
-    for (const val of uniqueVals) {
-        sumNcSq += (counts[val] || 0) ** 2;
+    for (let i = 0; i < m; i++) {
+        for (let j = i + 1; j < m; j++) {
+            totalPairs++;
+            if (values[i] === values[j]) {
+                agreementCount++;
+            }
+        }
     }
 
-    let De;
-    if (nTotal <= 1) {
-        De = 0;
-    } else {
-        De = (nTotal ** 2 - sumNcSq) / (nTotal * (nTotal - 1));
-    }
+    if (totalPairs === 0) return NaN;
 
-    // 計算此題目的 Du (observed disagreement)
-    const uCounts = {};
-    uniqueVals.forEach(v => {
-        uCounts[v] = values.filter(val => val === v).length;
-    });
-
-    let sumNuSq = 0;
-    for (const val of uniqueVals) {
-        sumNuSq += (uCounts[val] || 0) ** 2;
-    }
-
-    const Du = (m ** 2 - sumNuSq) / (m * (m - 1));
-
-    // 計算 Local Alpha
-    if (De === 0) {
-        return Du === 0 ? 1.0 : 0.0;
-    }
-
-    const score = 1 - (Du / De);
+    // 計算一致性分數 (0-1 之間)
+    const score = agreementCount / totalPairs;
     return score;
 }
 
@@ -707,12 +669,12 @@ async function addUsernamesToResults(results) {
     }
 }
 
-// 計算專案一致性（初次標註）
+// 計算專案一致性（初次標註 - 自動混合最新資料）
 async function calculateProjectAgreement(projectId, roundNumber = 0) {
     try {
         const tasks = ['promise_status', 'verification_timeline', 'evidence_status', 'evidence_quality'];
 
-        // 取得所有已完成的標註（使用最新版本）
+        // 取得所有已完成的標註（自動使用最新資料：優先重標註，否則初次標註）
         const annotations = await sql`
             SELECT
                 latest.source_data_id,
@@ -736,13 +698,13 @@ async function calculateProjectAgreement(projectId, roundNumber = 0) {
                     a.reannotation_comment,
                     a.status,
                     a.skipped,
+                    a.reannotation_round,
                     a.version,
                     a.created_at
                 FROM annotations a
                 JOIN source_data sd ON a.source_data_id = sd.id
                 WHERE sd.project_id = ${projectId}
-                    AND a.reannotation_round = ${roundNumber}
-                ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
+                ORDER BY a.source_data_id, a.user_id, a.reannotation_round DESC, a.version DESC, a.created_at DESC
             ) latest
             JOIN source_data sd ON latest.source_data_id = sd.id
             WHERE latest.status = 'completed'
