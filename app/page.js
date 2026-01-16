@@ -960,7 +960,43 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     };
 
     const loadPreviousTask = async () => {
-        // 如果 currentItem 是 null（已完成所有標註），傳入 null 讓後端返回最後一筆
+        // 判斷是否在重標模式（專案已完成）
+        const isProjectCompleted = progress.completed + skippedCount >= progress.total && progress.total > 0;
+
+        // 如果專案已完成且有重標列表，優先使用重標列表導航
+        if (isProjectCompleted && reannotationList && reannotationList.length > 0) {
+            // 找出當前項目在重標列表中的位置
+            let currentIndex = -1;
+            if (currentItem) {
+                currentIndex = reannotationList.findIndex(t => String(t.id) === String(currentItem.id));
+            }
+
+            if (currentIndex > 0) {
+                // 還有上一筆
+                const prevInList = reannotationList[currentIndex - 1];
+                const res = await getTaskBySequence(project.id, user.id, prevInList.sequence);
+                if (res.task) {
+                    setCurrentItem(res.task);
+                    loadTaskData(res.task);
+                    return;
+                }
+            } else if (currentIndex === 0) {
+                // 已經是第一筆
+                alert('已經是重標註列表的第一筆');
+                return;
+            } else if (currentItem === null) {
+                // 在完成頁面，跳到重標列表最後一筆
+                const lastInList = reannotationList[reannotationList.length - 1];
+                const res = await getTaskBySequence(project.id, user.id, lastInList.sequence);
+                if (res.task) {
+                    setCurrentItem(res.task);
+                    loadTaskData(res.task);
+                    return;
+                }
+            }
+        }
+
+        // 一般模式：依原本順序找上一筆
         const currentId = currentItem ? currentItem.id : null;
         const res = await getPreviousTaskForUser(project.id, user.id, currentId);
         if (res.task) {
@@ -988,17 +1024,23 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
 
     const handleToggleMark = async () => {
         if (!currentItem) return;
-        
+
+        // 判斷是否在重標模式
+        const isProjectCompleted = progress.completed + skippedCount >= progress.total && progress.total > 0;
+        const isInReannotationList = reannotationList && reannotationList.length > 0 &&
+            reannotationList.some(t => String(t.id) === String(currentItem.id));
+        const isReannotationMode = isProjectCompleted && isInReannotationList;
+
         const newState = !isMarked;
         setIsMarked(newState);
 
         try {
-            const result = await toggleAnnotationMark(currentItem.id, user.id);
+            const result = await toggleAnnotationMark(currentItem.id, user.id, isReannotationMode);
             if (!result.success) {
                 setIsMarked(!newState);
                 alert(`標記失敗: ${result.error}`);
             } else {
-                setAllTasks(prev => prev.map(t => 
+                setAllTasks(prev => prev.map(t =>
                     t.id === currentItem.id ? { ...t, is_marked: newState } : t
                 ));
             }

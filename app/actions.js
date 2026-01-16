@@ -126,12 +126,17 @@ export async function getNextTaskForUser(projectId, userId) {
 }
 
 // --- 切換資料的「回看標記」狀態 ---
-export async function toggleAnnotationMark(sourceDataId, userId) {
+// isReannotationMode: 是否在重標模式（由前端傳入）
+export async function toggleAnnotationMark(sourceDataId, userId, isReannotationMode = false) {
   try {
-    // 1. 檢查是否已有標註記錄
+    const targetRound = isReannotationMode ? 1 : 0;
+
+    // 1. 檢查該 round 是否已有標註記錄
     const { rows } = await sql`
-      SELECT id, is_marked FROM annotations 
-      WHERE source_data_id = ${sourceDataId} AND user_id = ${userId};
+      SELECT id, is_marked FROM annotations
+      WHERE source_data_id = ${sourceDataId}
+      AND user_id = ${userId}
+      AND reannotation_round = ${targetRound};
     `;
 
     let newMarkedState = true;
@@ -140,15 +145,15 @@ export async function toggleAnnotationMark(sourceDataId, userId) {
       // 2a. 如果已有記錄，則切換狀態
       newMarkedState = !rows[0].is_marked;
       await sql`
-        UPDATE annotations 
+        UPDATE annotations
         SET is_marked = ${newMarkedState}, updated_at = NOW()
         WHERE id = ${rows[0].id};
       `;
     } else {
-      // 2b. 如果沒有記錄，則建立一筆新的
+      // 2b. 如果沒有記錄，則建立一筆新的（指定 round）
       await sql`
-        INSERT INTO annotations (source_data_id, user_id, is_marked, updated_at)
-        VALUES (${sourceDataId}, ${userId}, TRUE, NOW());
+        INSERT INTO annotations (source_data_id, user_id, is_marked, reannotation_round, updated_at)
+        VALUES (${sourceDataId}, ${userId}, TRUE, ${targetRound}, NOW());
       `;
     }
 
