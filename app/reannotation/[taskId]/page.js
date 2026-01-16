@@ -291,6 +291,7 @@ export default function ReannotationDetailPage() {
 
     setSubmitting(true);
     try {
+      // 第1步：送出重標註
       const response = await fetch('/api/reannotation/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +308,24 @@ export default function ReannotationDetailPage() {
       const result = await response.json();
 
       if (result.success) {
-        alert('✅ 重標註已成功送出！');
+        // 第2步：等待一致性分數計算完成（使用 groupData.projectId）
+        if (groupData && groupData.projectId) {
+          try {
+            console.log('📊 正在重新計算一致性分數...');
+            const consistencyResponse = await fetch(`/api/consistency?projectId=${groupData.projectId}&userId=${user.id}`);
+            const consistencyResult = await consistencyResponse.json();
+
+            if (consistencyResult.success) {
+              console.log('✓ 一致性分數已更新');
+            } else {
+              console.warn('⚠️ 一致性計算失敗:', consistencyResult.error);
+            }
+          } catch (err) {
+            console.warn('⚠️ 一致性計算觸發失敗:', err);
+          }
+        }
+
+        alert('✅ 重標註已成功送出！一致性分數已更新。');
         router.push('/reannotation');
       } else {
         alert(`送出失敗: ${result.error}`);

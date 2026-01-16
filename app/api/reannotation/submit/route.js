@@ -129,6 +129,7 @@ export async function POST(request) {
       }
 
       // 複製原始標註的所有欄位，然後更新重標註的部分
+      const currentSaveCount = oldAnnotation.save_count || 0;
       const newAnnotation = {
         source_data_id: sourceDataId,
         user_id: userId,
@@ -144,7 +145,8 @@ export async function POST(request) {
         reannotation_round: task.round_number,
         version: newVersion,
         persist_answer: persistAnswer,
-        reannotation_comment: comment
+        reannotation_comment: comment,
+        save_count: currentSaveCount + 1  // 每次重標註儲存時增加 save_count
       };
 
       // 插入新的標註記錄（如果已存在則更新）
@@ -155,6 +157,7 @@ export async function POST(request) {
           promise_string, evidence_string,
           status, skipped,
           reannotation_round, version, persist_answer, reannotation_comment,
+          save_count,
           created_at, updated_at
         ) VALUES (
           ${newAnnotation.source_data_id},
@@ -172,10 +175,11 @@ export async function POST(request) {
           ${newAnnotation.version},
           ${newAnnotation.persist_answer},
           ${newAnnotation.reannotation_comment},
+          ${newAnnotation.save_count},
           NOW(),
           NOW()
         )
-        ON CONFLICT (source_data_id, user_id, version)
+        ON CONFLICT (source_data_id, user_id, reannotation_round)
         DO UPDATE SET
           esg_type = EXCLUDED.esg_type,
           promise_status = EXCLUDED.promise_status,
@@ -188,6 +192,7 @@ export async function POST(request) {
           skipped = EXCLUDED.skipped,
           persist_answer = EXCLUDED.persist_answer,
           reannotation_comment = EXCLUDED.reannotation_comment,
+          save_count = EXCLUDED.save_count,
           updated_at = NOW()
       `;
 

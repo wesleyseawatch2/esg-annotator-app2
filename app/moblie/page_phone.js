@@ -18,12 +18,11 @@ import {
   getLocalAnnouncements,
   updateSourceDataPageNumber,
   toggleAnnotationMark,
-  getProjectTasksOverview,
-  getReannotationHistory
-} from './actions';
+  getProjectTasksOverview
+} from '../actions';
 import dynamic from 'next/dynamic';
 
-const PDFViewer = dynamic(() => import('../components/PDFViewer'), {
+const PDFViewer = dynamic(() => import('../../components/PDFViewer'), {
   ssr: false,
   loading: () => <div className="pdf-status">正在載入 PDF 瀏覽器...</div>
 });
@@ -332,10 +331,10 @@ function LoginRegisterScreen({ onLoginSuccess }) {
 function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
   const [projects, setProjects] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [reannotationCount, setReannotationCount] = useState(0);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false); // 控制彈窗
   const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);            // 記錄已讀公告的 ID
   const [isAnnouncementsLoading, setIsAnnouncementsLoading] = useState(true);    // 公告載入狀態，預設為 true
-  const [reannotationCount, setReannotationCount] = useState(0);
 
   useEffect(() => {
     async function fetchProjects() {
@@ -490,6 +489,54 @@ function ProjectSelectionScreen({ user, onProjectSelect, onLogout }) {
                 </div>
             </button>
         </div>
+
+        {/* --- 手機版：參考資料連結 --- */}
+        <div className="mobile-reference-links">
+            <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer">
+                📖 AI CUP 標註手冊
+            </a>
+            <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer">
+                📊 系統教學投影片
+            </a>
+        </div>
+
+        {/* 重標註任務提示 */}
+        {reannotationCount > 0 && (
+          <div style={{
+            padding: '15px',
+            marginBottom: '20px',
+            background: '#fef3c7',
+            border: '2px solid #f59e0b',
+            borderRadius: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'start' }}>
+              <span style={{ fontSize: '20px', marginRight: '10px' }}>🔄</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, marginBottom: '8px', fontSize: '16px', fontWeight: 'bold' }}>
+                  你有 {reannotationCount} 個重標註任務待處理
+                </h3>
+                <p style={{ margin: 0, fontSize: '14px', marginBottom: '10px' }}>
+                  管理員發現部分標註的一致性較低，需要您重新檢視並修改。
+                </p>
+                <Link
+                  href="/reannotation"
+                  style={{
+                    display: 'inline-block',
+                    padding: '8px 16px',
+                    background: '#f59e0b',
+                    color: 'white',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}
+                >
+                  前往處理重標註任務 →
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         <p>請選擇要標註的公司專案:</p>
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '20px' }}>
@@ -774,81 +821,6 @@ function AllTasksOverviewScreen({ user, project, onBack, onJumpToTask }) {
     );
 }
 
-function HistoryModal({ isOpen, onClose, history, loading }) {
-    if (!isOpen) return null;
-
-    // 輔助函式：將輪次數字轉為易讀文字
-    const getRoundLabel = (round) => {
-        if (!round || round === 0) return '初次標註';
-        if (round === 1) return '第一輪重標';
-        if (round === 2) return '第二輪重標';
-        return `第 ${round} 輪重標`;
-    };
-
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
-            display: 'flex', justifyContent: 'center', alignItems: 'center'
-        }} onClick={onClose}>
-            <div style={{
-                background: 'white', padding: '20px', borderRadius: '8px',
-                width: '750px',
-                maxHeight: '80vh', overflowY: 'auto',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-            }} onClick={e => e.stopPropagation()}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                    <h3 style={{ margin: 0 }}>📜 標註歷史紀錄</h3>
-                    <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px' }}>×</button>
-                </div>
-
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '20px' }}>載入中...</div>
-                ) : history.length === 0 ? (
-                    <div style={{ color: '#666', textAlign: 'center' }}>尚無修改紀錄</div>
-                ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                        <thead>
-                            <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                                <th style={{ padding: '8px', textAlign: 'left', width: '110px' }}>階段</th>
-                                <th style={{ padding: '8px', textAlign: 'left', width: '155px' }}>時間</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>變更欄位</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>舊值</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>新值</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {history.map((log, idx) => {
-                                // 計算序號：總筆數 - 目前索引 = 第 N 次
-                                const seqNumber = history.length - idx;
-                                
-                                return (
-                                    <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                                        {/* 顯示「第 N 次標註」 */}
-                                        <td style={{ padding: '8px' }}>
-                                            <span style={{ 
-                                                background: '#e0f2fe', color: '#0369a1', 
-                                                padding: '2px 8px', borderRadius: '10px', fontSize: '12px',
-                                                fontWeight: 'bold'
-                                            }}>
-                                                第 {seqNumber} 次標註
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '8px', color: '#6b7280', fontSize: '12px' }}>{log.changed_at}</td>
-                                        <td style={{ padding: '8px', fontWeight: 'bold' }}>{log.task_name}</td>
-                                        <td style={{ padding: '8px', color: '#ef4444' }}>{log.old_value || '(空)'}</td>
-                                        <td style={{ padding: '8px', color: '#10b981' }}>{log.new_value}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                )}
-            </div>
-        </div>
-    );
-}
-
 function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequence, onJumpConsumed }) {
     const [currentItem, setCurrentItem] = useState(undefined);
     const [progress, setProgress] = useState({ completed: 0, total: 0 });
@@ -869,36 +841,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const [batchAlignProgress, setBatchAlignProgress] = useState(null);
     const [showBatchResult, setShowBatchResult] = useState(false);
     const dataTextRef = useRef(null);
-    const [reannotationList, setReannotationList] = useState([]);
-    const [loadingReannotation, setLoadingReannotation] = useState(false);
-    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-    const [historyData, setHistoryData] = useState([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
-
-    // 處理點擊資料筆數
-    const handleShowHistory = async (task) => {
-        setIsHistoryModalOpen(true);
-        setHistoryLoading(true);
-        // 呼叫後端 action
-        const res = await getReannotationHistory(task.id, user.id); // 這裡 task.id 應該對應 source_data_id
-        if (res.success) {
-            setHistoryData(res.history);
-        } else {
-            alert('載入歷史失敗');
-        }
-        setHistoryLoading(false);
-    };
-
-    // --- 輔助函式：去除重複的任務 (根據 ID) ---
-    const getUniqueTasks = (tasks) => {
-        if (!Array.isArray(tasks)) return [];
-        const seen = new Set();
-        return tasks.filter(task => {
-            const duplicate = seen.has(task.id);
-            seen.add(task.id);
-            return !duplicate;
-        });
-    };
+    const [mobileActiveTab, setMobileActiveTab] = useState('text'); // 手機版分頁狀態
 
     useEffect(() => { loadTask(); }, []);
 
@@ -925,6 +868,9 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             } else {
                 dataTextRef.current.innerHTML = currentItem.original_data;
             }
+        } else if (currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0) {
+            // 只有在真正完成所有標註時（已完成 + 已跳過 = 總題數），才自動執行驗證
+            handleValidateData();
         }
     }, [currentItem, progress, skippedCount]);
 
@@ -949,12 +895,9 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         // 載入所有任務及其狀態
         const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
         if (allTasksRes.tasks) {
-            // 先去重再設定 State
-            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
-            setAllTasks(uniqueTasks);
-            
-            // 計算跳過數量 (也要用去重後的資料算才準確)
-            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
+            setAllTasks(allTasksRes.tasks);
+            // 計算跳過數量
+            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
             setSkippedCount(skipped);
         }
     };
@@ -1020,68 +963,9 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         }
     };
 
-    // 抓取該專案重標註任務的函式
-    const fetchProjectReannotationTasks = async () => {
-        // 安全檢查：如果沒有專案或使用者資訊，直接不執行
-        if (!project || !project.id || !user || !user.id) return;
-
-        setLoadingReannotation(true);
-        try {
-            // 呼叫 Next.js API（app/api/consistency/route.js）
-            const response = await fetch(`/api/consistency?projectId=${project.id}&userId=${user.id}`);
-            const result = await response.json();
-            
-            // 檢查回應狀態，避免伺服器錯誤導致崩潰
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-
-            if (result.success && Array.isArray(result.tasks)) {
-            // 只留下「需要重標註 (分數 < 0.8)」或者「已修正過 (modify_count > 0)」的資料
-                const filteredTasks = result.tasks.filter(t => t.needs_reannotation || t.modify_count > 0);
-                // 按 sequence 排序（原始標註順序）
-                filteredTasks.sort((a, b) => parseInt(a.sequence) - parseInt(b.sequence));
-                console.log('[reannotationList] 排序後前5筆:', filteredTasks.slice(0, 5).map(t => ({ id: t.id, seq: t.sequence })));
-                setReannotationList(filteredTasks);
-            } else {
-                setReannotationList([]);
-            }
-        } catch (error) {
-            console.error('載入重標註列表失敗:', error);
-            setReannotationList([]);
-        }
-        setLoadingReannotation(false);
-    };
-
-    useEffect(() => {
-        const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
-
-        if (isProjectCompleted) {
-            fetchProjectReannotationTasks();
-        }
-    }, [currentItem, progress, skippedCount]); // 監聽這些變數變化
-
-    // 當頁面重新獲得焦點時（從其他頁面返回），重新載入一致性分數
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            // 只在專案完成時才重新載入
-            const isProjectCompleted = currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0;
-            if (!document.hidden && isProjectCompleted && project && user) {
-                fetchProjectReannotationTasks();
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [currentItem, progress, skippedCount, project, user]); // 監聽相關變數
-
     const handleSaveAndNext = async () => {
         if (!currentItem) return;
 
-        // --- 1. 表單驗證 ---
         if (!promiseStatus) return alert('請選擇承諾狀態');
 
         const promiseText = getHighlightedText('promise');
@@ -1101,13 +985,6 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             }
         }
 
-        // --- 2. 準備並儲存資料 ---
-        // 判斷是否在重標模式：專案已完成 + 目前這筆在重標註列表中
-        const isProjectCompleted = progress.completed + skippedCount >= progress.total && progress.total > 0;
-        const isInReannotationList = reannotationList && reannotationList.length > 0 &&
-            reannotationList.some(t => String(t.id) === String(currentItem.id));
-        const isReannotationMode = isProjectCompleted && isInReannotationList;
-
         const annotationData = {
             source_data_id: currentItem.id,
             user_id: user.id,
@@ -1117,15 +994,8 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             verification_timeline: verificationTimeline,
             evidence_status: evidenceStatus,
             evidence_string: evidenceText,
-            evidence_quality: evidenceQuality,
-            isReannotationMode  // 傳給後端判斷要存到哪個 round
+            evidence_quality: evidenceQuality
         };
-
-        console.log('[handleSaveAndNext] 儲存資料:', {
-            source_data_id: annotationData.source_data_id,
-            currentItem_id: currentItem.id,
-            isReannotationMode
-        });
 
         const result = await saveAnnotation(annotationData);
         if (!result.success) {
@@ -1133,10 +1003,6 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             return;
         }
 
-        // 存檔成功後，立刻重新抓取後端最新的分數列表，確保紅綠燈即時變更
-        await fetchProjectReannotationTasks();
-
-        // --- 3. 清理當前畫面狀態 ---
         // 清除所有標記（切換到下一筆時重置）
         if (dataTextRef.current && currentItem) {
             dataTextRef.current.innerHTML = currentItem.original_data;
@@ -1147,67 +1013,33 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         setEvidenceStatus('');
         setEvidenceQuality('');
 
-        // --- 4. 判斷並載入下一筆任務 ---
-        let nextTask = null;
-
-        // 優先邏輯：如果重標註列表有資料，嘗試從列表中找下一筆
-        if (reannotationList && reannotationList.length > 0) {
-            // 找出當前這筆在列表中的位置
-            const currentIndex = reannotationList.findIndex(t => t.id === currentItem.id);
-            
-            // 如果這筆在列表裡，而且後面還有資料，就抓下一筆
-            if (currentIndex !== -1 && currentIndex < reannotationList.length - 1) {
-                const nextInList = reannotationList[currentIndex + 1];
-                
-                // 為了保險，用 ID 再去後端抓一次完整資料
-                const res = await getTaskBySequence(project.id, user.id, nextInList.sequence);
-                if (res.task) {
-                    nextTask = res.task;
-                }
-            }
-        }
-
-        // [備案] 邏輯：如果在重標清單裡找不到（例如已經修完最後一筆紅燈），或是清單是空的
-        // 就維持原本的行為：依照物理順序抓下一筆
-        if (!nextTask) {
-             const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
-             nextTask = nextRes.task;
-        }
-
-        // 執行跳轉
-        if (nextTask) {
-            setCurrentItem(nextTask);
-            loadTaskData(nextTask); // 使用現有的函式來載入資料與高亮
-            
-            // 更新網址 (選用，讓瀏覽器上一頁/下一頁能運作)
-            window.history.pushState(null, '', `?project=${project.id}&sequence=${nextTask.sequence}`);
+        // 載入當前項目之後的下一筆（不管是否已標註）
+        const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
+        if (nextRes.task) {
+            setCurrentItem(nextRes.task);
+            loadTaskData(nextRes.task);
         } else {
             // 如果沒有下一筆，顯示完成訊息
             setCurrentItem(null);
         }
 
-        // --- 5. 樂觀更新全域狀態 (進度條、下拉選單) ---
-        
-        // A. 更新下拉選單的狀態 (allTasks)
-        setAllTasks(prevTasks => prevTasks.map(t => {
-            if (t.id === annotationData.source_data_id) {
-                // 如果這筆原本沒完成，現在完成了，要順便加進度
-                return { ...t, status: 'completed', skipped: false };
-            }
-            return t;
-        }));
+        // 更新進度
+        const projRes = await getProjectsWithProgress(user.id);
+        const proj = projRes.projects?.find(p => p.id === project.id);
+        if (proj) setProgress({
+            completed: parseInt(proj.completed_tasks) || 0,
+            total: parseInt(proj.total_tasks) || 0
+        });
 
-        // B. 更新進度條 (Progress)
-        // 先檢查這筆任務在更新前是不是「未完成」的，如果是，進度才 +1
-        const targetTask = allTasks.find(t => t.id === annotationData.source_data_id);
-        if (targetTask && targetTask.status !== 'completed') {
-            setProgress(prev => ({
-                ...prev,
-                completed: prev.completed + 1
-            }));
+        // 重新載入所有任務及其狀態
+        const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
+        if (allTasksRes.tasks) {
+            setAllTasks(allTasksRes.tasks);
+            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
+            setSkippedCount(skipped);
         }
 
-        // C. 如果有驗證結果，重新驗證以更新警告框 (這部分維持原樣，或也可以選擇暫時隱藏)
+        // 如果有驗證結果，重新驗證以更新警告框
         if (validationResult) {
             const newValidation = await validateCompletedAnnotations(project.id, user.id);
             if (!newValidation.error) {
@@ -1219,40 +1051,66 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const handleSkip = async () => {
         if (!currentItem) return;
 
-        // 判斷是否在重標模式（目前這筆在重標註列表中）
-        const isInReannotationMode = reannotationList && reannotationList.length > 0 && reannotationList.some(t => String(t.id) === String(currentItem.id));
+        const annotationData = {
+            source_data_id: currentItem.id,
+            user_id: user.id,
+            esg_type: '',
+            promise_status: '',
+            promise_string: '',
+            verification_timeline: '',
+            evidence_status: '',
+            evidence_string: '',
+            evidence_quality: '',
+            skipped: true
+        };
 
-        let nextTask = null;
-
-        if (isInReannotationMode) {
-            // 從重標註列表找下一筆
-            const currentIndex = reannotationList.findIndex(t => String(t.id) === String(currentItem.id));
-
-            if (currentIndex !== -1 && currentIndex < reannotationList.length - 1) {
-                const nextInList = reannotationList[currentIndex + 1];
-                const res = await getTaskBySequence(project.id, user.id, nextInList.sequence);
-                if (res.task) {
-                    nextTask = res.task;
-                }
-            }
-        } else {
-            // 一般模式：跳到順序的下一筆
-            const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
-            if (nextRes.task) {
-                nextTask = nextRes.task;
-            }
+        const result = await saveAnnotation(annotationData);
+        if (!result.success) {
+            alert(`儲存失敗: ${result.error}`);
+            return;
         }
 
-        // 更新到下一筆或回到完成頁面
-        if (nextTask) {
-            setCurrentItem(nextTask);
-            loadTaskData(nextTask);
-            // 更新文字內容
-            if (dataTextRef.current && nextTask.original_data) {
-                dataTextRef.current.innerHTML = nextTask.original_data;
-            }
+        // 清除所有標記（切換到下一筆時重置）
+        if (dataTextRef.current && currentItem) {
+            dataTextRef.current.innerHTML = currentItem.original_data;
+        }
+        setEsgTypes([]);
+        setPromiseStatus('');
+        setVerificationTimeline('');
+        setEvidenceStatus('');
+        setEvidenceQuality('');
+
+        // 載入下一筆未標註的資料（而不是順序的下一筆）
+        const nextRes = await getNextTaskForUser(project.id, user.id);
+        if (nextRes.task) {
+            setCurrentItem(nextRes.task);
+            loadTaskData(nextRes.task);
         } else {
             setCurrentItem(null);
+        }
+
+        // 更新進度和任務列表
+        const projRes = await getProjectsWithProgress(user.id);
+        const proj = projRes.projects?.find(p => p.id === project.id);
+        if (proj) setProgress({
+            completed: parseInt(proj.completed_tasks) || 0,
+            total: parseInt(proj.total_tasks) || 0
+        });
+
+        // 重新載入所有任務及其狀態
+        const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
+        if (allTasksRes.tasks) {
+            setAllTasks(allTasksRes.tasks);
+            const skipped = allTasksRes.tasks.filter(t => t.skipped === true).length;
+            setSkippedCount(skipped);
+        }
+
+        // 如果有驗證結果，重新驗證以更新警告框
+        if (validationResult) {
+            const newValidation = await validateCompletedAnnotations(project.id, user.id);
+            if (!newValidation.error) {
+                setValidationResult(newValidation);
+            }
         }
     };
 
@@ -1765,27 +1623,18 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         
         const range = selection.getRangeAt(0);
         const container = dataTextRef.current;
+        if (!container.contains(range.commonAncestorContainer)) return;
         
-        // 檢查選取範圍是否在文本框內
-        if (!container.contains(range.commonAncestorContainer)) {
-            // 有時候使用者選太快會選到外面，這裡做個寬容檢查
-            return; 
-        }
+        const span = document.createElement('span');
+        span.className = `highlight-${type}`;
         
         try {
-            const span = document.createElement('span');
-            span.className = `highlight-${type}`;
-            
-            // 使用 extractContents + insert 比較不會因為跨標籤而報錯
-            span.appendChild(range.extractContents());
-            range.insertNode(span);
-            
-            // 清除選取狀態
-            selection.removeAllRanges();
+            range.surroundContents(span);
         } catch (err) {
-            console.warn('標記失敗:', err);
-            alert('標記失敗：請試著不要選取到已經標記過的文字邊界，或分段選取。');
+            console.warn('無法標記選取範圍:', err);
         }
+        
+        selection.removeAllRanges();
     };
 
     const getHighlightedText = (type) => {
@@ -1982,94 +1831,39 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         container.innerHTML = newHTML;
     };
 
-    // 一鍵清除所有標記
-    const clearAllHighlights = () => {
-        if (!dataTextRef.current || !currentItem) return;
-
-        // 1. 將內容還原為原始資料 (移除所有 span 標籤)
-        dataTextRef.current.innerHTML = currentItem.original_data;
-
-        // 2. 清除當前的瀏覽器選取範圍
-        const selection = window.getSelection();
-        if (selection) selection.removeAllRanges();
-    };
-
     const toggleEsgType = (type) => setEsgTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
-    
+
     useEffect(() => { if (promiseStatus === 'No') { setVerificationTimeline('N/A'); setEvidenceStatus('N/A'); } }, [promiseStatus]);
     useEffect(() => { if (evidenceStatus !== 'Yes') setEvidenceQuality('N/A'); }, [evidenceStatus]);
 
 return (
         <div className="container">
-
-            <HistoryModal 
-                isOpen={isHistoryModalOpen} 
-                onClose={() => setIsHistoryModalOpen(false)} 
-                history={historyData}
-                loading={historyLoading}
-            />
-
             <div className="header">
-                <h1>{project.name} - 標註工具</h1>
+                <h1>
+                    {/* 手機版：返回箭頭 */}
+                    <span className="mobile-back-arrow" onClick={onBack}>←</span>
+                    <span>{project.name} - 標註工具</span>
+                </h1>
                 <div className="controls">
-                    <button onClick={onBack} className="btn">返回專案列表</button>
+                    <button onClick={onBack} className="btn hide-on-mobile">返回專案列表</button>
                     {user.role === 'admin' && (
-                        <button onClick={handleBatchAutoAlign} disabled={!!batchAlignProgress && !batchAlignProgress.completed} className="btn" style={{ background: '#8b5cf6', color: 'white', marginLeft: '10px' }}>
+                        <button onClick={handleBatchAutoAlign} disabled={!!batchAlignProgress && !batchAlignProgress.completed} className="btn hide-on-mobile" style={{ background: '#8b5cf6', color: 'white', marginLeft: '10px' }}>
                             🤖 批次自動對齊
                         </button>
                     )}
                     {user.role === 'admin' && (
-                        <button onClick={handleAutoFixUrlMismatch} className="btn" style={{ background: '#10b981', color: 'white', marginLeft: '10px' }}>
+                        <button onClick={handleAutoFixUrlMismatch} className="btn hide-on-mobile" style={{ background: '#10b981', color: 'white', marginLeft: '10px' }}>
                             🔗 修復 URL 不匹配
                         </button>
                     )}
                     <button onClick={handleValidateData} className="btn" style={{ background: '#3b82f6', color: 'white', marginLeft: '10px' }}>
                         ✓ 驗證資料完整性
                     </button>
-                    <button onClick={handleResetProject} className="btn" style={{ background: '#dc2626', color: 'white', marginLeft: '10px' }}>
+                    <button onClick={handleResetProject} className="btn hide-on-mobile" style={{ background: '#dc2626', color: 'white', marginLeft: '10px' }}>
                         🔄 重置專案
                     </button>
-                    {/* 右側使用者資訊區 */}
-                    <div style={{ 
-                        marginLeft: 'auto', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'flex-end',
-                        marginTop: '10px',
-                        position: 'relative'
-                    }}>
-                        {/* 顯示條件：當專案已完成 (進度100%) 且 目前不在完成頁面 (currentItem不為null) 時顯示 */}
-                        {(progress.completed + skippedCount >= progress.total) && currentItem !== null && (
-                            <button
-                                onClick={() => setCurrentItem(null)} 
-                                style={{
-                                    position: 'absolute',  // 絕對定位：浮在上方
-                                    top: '-45px',          // 往上移動
-                                    right: 0,              // 靠右對齊
-                                    background: '#f59e0b',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '10px 18px',   // 內距：按鈕高度與寬度
-                                    fontSize: '14px',      // 按鈕文字大小
-                                    cursor: 'pointer',
-                                    fontWeight: 'bold',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    whiteSpace: 'nowrap'
-                                }}
-                            >
-                                返回重標註清單 🚀
-                            </button>
-                        )}
-                        <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
-                            標註者: {user.username}
-                        </span>
-                    </div>
+                    <span style={{ marginLeft: 'auto', fontWeight: 'bold' }}>標註者: {user.username}</span>
                 </div>
-
                 {/* --- 按鈕與參考資料 --- */}
                 <div className="progress" style={{ 
                     display: 'flex', 
@@ -2087,11 +1881,16 @@ return (
                         {/* 1. 個人進度 */}
                         <div style={{ fontSize: '14px', color: '#4b5563', fontWeight: '500' }}>
                             您的個人進度: {progress.completed} / {progress.total}
+                            {skippedCount > 0 && (
+                                <span style={{ color: '#f59e0b', fontWeight: 'bold', marginLeft: '8px' }}>
+                                    ⚠️ {skippedCount} 待補
+                                </span>
+                            )}
                         </div>
 
                         {/* 2. 跳轉選單 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ whiteSpace: 'nowrap', fontSize: '14px', color: '#374151' }}>跳到第幾筆:</span>
+                            <span style={{ whiteSpace: 'nowrap', fontSize: '14px', color: '#374151' }} className="hide-on-mobile">跳到第幾筆:</span>
                             <select 
                                 value={selectedSequence} 
                                 onChange={handleSequenceJump} 
@@ -2104,7 +1903,7 @@ return (
                                     color: '#374151'
                                 }}
                             >
-                                <option value="">請選擇...</option>
+                                <option value="">跳到第幾筆...</option>
                                 {allTasks.map((task) => {
                                     let status = '', color = '';
                                     let isIncomplete = false;
@@ -2129,30 +1928,30 @@ return (
                     {/* [右側區塊] */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         
-                        {/* 3. 參考資源 */}
+                        {/* 3. 參考資源 - 電腦版 */}
                         <div style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
                             gap: '12px',
-                            borderRight: '1px solid #d1d5db', // 分隔線
+                            borderRight: '1px solid #d1d5db',
                             paddingRight: '20px'
-                        }}>
+                        }} className="hide-on-mobile">
                             <span style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📚 參考資料：
+                                📚 參考資源:
                             </span>
                             <a href="https://hackmd.io/@wesley12345/H14L7CWAxe#AI-CUP-%E6%A8%99%E8%A8%BB%E6%89%8B%E5%86%8A" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📖 AI CUP 標註手冊
+                                📖 AI CUP 標註手冊 V2
                             </a>
                             <span style={{ color: '#cbd5e1' }}>|</span>
                             <a href="https://docs.google.com/presentation/d/1px_pWnWi67JQEfLa448btzWxGLlSiQPvpDMHDbXtbm8/edit?usp=sharing" target="_blank" rel="noopener noreferrer" style={{ color: '#ea580c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '500' }}>
-                                📊 系統教學投影片（20260108版）
+                                📊 系統教學投影片(20260107版)
                             </a>
                         </div>
 
                         {/* 4. 五個操作按鈕 */}
                         <div className="nav-btns" style={{ display: 'flex', gap: '8px' }}>
                             <button
-                                className="btn"
+                                className="btn hide-on-mobile"
                                 onClick={onShowOverview}
                                 title="查看所有資料"
                                 style={{ background: '#6366f1', color: 'white', padding: '8px 12px', fontSize: '14px', fontWeight: 'bold' }}
@@ -2183,7 +1982,18 @@ return (
                                 disabled={progress.completed === 0}
                                 style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
                             >
-                                ← 上一筆
+                                <span className="hide-on-mobile">← 上一筆</span>
+                                <span style={{ display: 'none' }}>←</span>
+                            </button>
+
+                            <button
+                                className="btn"
+                                onClick={handleSkip}
+                                disabled={!currentItem}
+                                style={{ background: '#f59e0b', color: 'white' }}
+                            >
+                                <span className="hide-on-mobile">⏭️ 跳過</span>
+                                <span style={{ display: 'none' }}>⏭️</span>
                             </button>
 
                             <button
@@ -2193,18 +2003,6 @@ return (
                             >
                                 儲存 & 下一筆
                             </button>
-
-                            {/* 初次標註模式才顯示「下一筆」按鈕（不儲存直接跳） */}
-                            {!(progress.completed + skippedCount >= progress.total && progress.total > 0) && (
-                                <button
-                                    className="btn"
-                                    onClick={handleSkip}
-                                    disabled={!currentItem}
-                                    style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
-                                >
-                                    下一筆 →
-                                </button>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -2243,11 +2041,11 @@ return (
                             {batchAlignProgress.status}
                         </div>
                         <div style={{ display: 'flex', gap: '20px', fontSize: '13px', marginBottom: '10px' }}>
-                            <span>進度：{batchAlignProgress.current} / {batchAlignProgress.total}</span>
-                            <span style={{ color: '#10b981' }}>✓ 已調整：{batchAlignProgress.alignedCount}</span>
-                            <span style={{ color: '#6b7280' }}>○ 跳過：{batchAlignProgress.skippedCount}</span>
+                            <span>進度:{batchAlignProgress.current} / {batchAlignProgress.total}</span>
+                            <span style={{ color: '#10b981' }}>✓ 已調整:{batchAlignProgress.alignedCount}</span>
+                            <span style={{ color: '#6b7280' }}>○ 跳過:{batchAlignProgress.skippedCount}</span>
                             {batchAlignProgress.errorCount > 0 && (
-                                <span style={{ color: '#dc2626' }}>✗ 錯誤：{batchAlignProgress.errorCount}</span>
+                                <span style={{ color: '#dc2626' }}>✗ 錯誤:{batchAlignProgress.errorCount}</span>
                             )}
                         </div>
                         {!batchAlignProgress.completed && batchAlignProgress.total > 0 && (
@@ -2280,145 +2078,14 @@ return (
 
             {currentItem === undefined && <div className="panel"><h2>讀取中...</h2></div>}
             {currentItem === null && progress.completed + skippedCount >= progress.total && progress.total > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    
-                    {/* 1. 恭喜訊息 Panel */}
-                    <div className="panel" style={{ borderLeft: '5px solid #10b981' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontSize: '24px' }}>🎉</span>
-                            <div>
-                                <h2 style={{ margin: 0, color: '#064e3b' }}>恭喜！您已完成此專案的所有標註！</h2>
-                                <p style={{ margin: '5px 0 0 0', color: '#6b7280' }}>
-                                    請點擊「<strong style={{ color: '#3b82f6' }}>✓ 驗證資料完整性</strong>」按鈕確保所有資料都是完整的。
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 載入中狀態 */}
-                    {loadingReannotation && (
-                        <div className="panel" style={{ textAlign: 'center', padding: '40px' }}>
-                            <div className="spinner" style={{ margin: '0 auto 10px auto' }}></div>
-                            <span style={{ color: '#6b7280', fontWeight: 'bold' }}>正在分析一致性分數與重標註清單，請稍候...</span>
-                        </div>
-                    )}
-
-                    {/* 2. 重標註任務列表 (只在非載入中且有資料時顯示) */}
-                    {!loadingReannotation && reannotationList.length > 0 && (
-                        <div className="reannotation-container">
-                            {/* ... (這裡面的內容維持不變) ... */}
-                            <div className="reannotation-header">
-                                <h3>📋 重標註項目 ({reannotationList.length} 筆)</h3>
-                                <span style={{ fontSize: '13px', color: '#64748b' }}>
-                                    以下資料的一致性分數較低，建議您重新檢視
-                                </span>
-                            </div>
-                            
-                            <div style={{ overflowX: 'auto' }}>
-                            <table className="re-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: '80px', fontSize: '13px' }}>狀態</th>
-                                        <th style={{ width: '90px', fontSize: '13px' }}>資料</th>
-                                        <th style={{ minWidth: '150px', fontSize: '13px' }}>文本</th>
-                                        <th style={{ width: '150px', fontSize: '13px' }}>儲存次數</th>
-                                        <th style={{ width: '120px', fontSize: '13px' }}>承諾狀態</th>
-                                        <th style={{ width: '120px', fontSize: '13px' }}>驗證時間</th>
-                                        <th style={{ width: '120px', fontSize: '13px' }}>證據狀態</th>
-                                        <th style={{ width: '120px', fontSize: '13px' }}>證據品質</th>
-                                        <th style={{ width: '150px' }}>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {reannotationList.map((task, index) => {
-                                        // 輔助函式：分數樣式 (低分紅字)
-                                        const getScoreStyle = (score) => ({
-                                            fontWeight: '700',
-                                            fontFamily: 'monospace',
-                                            color: score < 0.6 ? '#ef4444' : '#94a3b8'
-                                        });
-                                        const fmt = (n) => (typeof n === 'number' ? n.toFixed(2) : '-');
-
-                                        return (
-                                            <tr key={task.id || index}>
-                                                {/* 狀態燈號 */}
-                                                <td data-label="狀態">
-                                                    {/* 邏輯：modify_count > 0 ? 綠 : 紅 */}
-                                                    <span className={`status-dot ${task.modify_count > 0 ? 'green' : 'red'}`}></span>
-                                                </td>
-                                                
-                                                {/* 資料筆數 (按鈕) - 顯示重標註紀錄 */}
-                                                <td data-label="資料">
-                                                    <button 
-                                                        onClick={() => handleShowHistory(task)}
-                                                        style={{ 
-                                                            background: 'none', border: 'none', 
-                                                            color: '#2563eb', fontWeight: 'bold', 
-                                                            cursor: 'pointer', textDecoration: 'underline' 
-                                                        }}
-                                                        title="點擊查看修改歷史"
-                                                    >
-                                                        第 {task.sequence} 筆
-                                                    </button>
-                                                </td>
-
-                                                {/* 文本預覽欄位 */}
-                                                <td data-label="文本">
-                                                <div className="text-preview" title={task.preview_text}>
-                                                        {task.preview_text}
-                                                    </div>
-                                                </td>
-                                                
-                                                {/* 儲存次數欄位 */}
-                                                <td data-label="儲存次數" style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                                    {task.modify_count}
-                                                </td>
-                                                
-                                                {/* 一致性分數欄位 - 四大維度 */}
-                                                <td data-label="承諾狀態分">
-                                                    <span style={getScoreStyle(task.s_promise)}>{fmt(task.s_promise)}</span>
-                                                </td>
-                                                <td data-label="驗證時間分">
-                                                    <span style={getScoreStyle(task.s_timeline)}>{fmt(task.s_timeline)}</span>
-                                                </td>
-                                                <td data-label="證據狀態分">
-                                                    <span style={getScoreStyle(task.s_evidence)}>{fmt(task.s_evidence)}</span>
-                                                </td>
-                                                <td data-label="證據品質分">
-                                                    <span style={getScoreStyle(task.s_quality)}>{fmt(task.s_quality)}</span>
-                                                </td>
-
-                                                {/* 重標註按鈕欄位 */}
-                                                <td data-label="操作">
-                                                    <button 
-                                                        className="btn-reannotate"
-                                                        style={{
-                                                            // 邏輯：modify_count > 0 ? 綠(再次檢視) : 橘(重標註)
-                                                            backgroundColor: task.modify_count > 0 ? '#10b981' : '#f59e0b',
-                                                            transition: 'background-color 0.3s'
-                                                        }}
-                                                        onClick={() => {
-                                                            handleSequenceJump({ target: { value: task.sequence } });
-                                                        }}
-                                                    >
-                                                        {task.modify_count > 0 ? '再次檢視' : '重標註'}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                   {/* 無重標註資料時的提示 (只在非載入中且無資料時顯示) */}
-                    {!loadingReannotation && reannotationList.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-                            沒有需要重標註的任務，辛苦了👍！
-                        </div>
-                    )}
+                <div className="panel">
+                    <h2>🎉 恭喜！您已完成此專案的所有標註！</h2>
+                    <p style={{ marginTop: '20px', fontSize: '16px', color: '#666' }}>
+                        請點擊「<strong style={{ color: '#3b82f6' }}>✓ 驗證資料完整性</strong>」按鈕確保所有資料都是完整的。
+                    </p>
+                    <p style={{ marginTop: '10px', fontSize: '16px', color: '#666' }}>
+                        您也可以點擊「← 上一筆」按鈕返回查看或修改已標註的項目。
+                    </p>
                 </div>
             )}
             {currentItem === null && !(progress.completed + skippedCount >= progress.total && progress.total > 0) && (
@@ -2444,317 +2111,474 @@ return (
                 </div>
             )}
             {currentItem && (
-                <div className="content">
-                    <div className="content-top">
-                        <div className="panel">
-                            <h2>
-                                第 {allTasks.find(t => t.id === currentItem.id)?.sequence || '-'} 筆文本內容
-                                （ID：{currentItem.id}, 頁碼：{currentItem.page_number}）
-                            </h2>
-                            <div className="info-box">用滑鼠選取文字後點擊下方按鈕: 黃色=承諾 / 藍色=證據 / 清除選取標記=橡皮擦（只清除選取的標記）</div>
-                            <div ref={dataTextRef} className="text-area"></div>
-                            {/* 螢光筆工具列 */}
-                            <div className="btn-group" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                <span style={{ fontWeight: 'bold', marginRight: '5px', fontSize: '14px' }}>
-                                    選取後標記：
-                                </span>
-                                <button
-                                    className="btn"
-                                    style={{
-                                        backgroundColor: '#f9f2d2ff',
-                                        color: '#282828ff',
-                                        border: '1px solid #eab308',
-                                        fontWeight: '600'
-                                    }}
-                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('promise'); }}
-                                >
-                                    承諾語句
-                                </button>
-                                <button
-                                    className="btn"
-                                    style={{
-                                        backgroundColor: '#bae6fd',
-                                        color: '#282828ff',
-                                        border: '1px solid #79b3faff',
-                                        fontWeight: '600'
-                                    }}
-                                    onMouseDown={(e) => { e.preventDefault(); highlightSelection('evidence'); }}
-                                >
-                                    證據語句
-                                </button>
-
-                                <button
-                                    className="btn btn-secondary"
-                                    onMouseDown={(e) => { e.preventDefault(); clearSelectedHighlights(); }}
-                                    title="請先選取要清除的標記文字範圍，再點擊此按鈕"
-                                >
-                                    清除選取標記
-                                </button>
-
-                                {/* 右側全部清除按鈕 (維持原本樣式，但功能已更新為不跳彈窗) */}
-                                <button
-                                    className="btn"
-                                    style={{ 
-                                        backgroundColor: '#ef4444', 
-                                        color: 'white', 
-                                        marginLeft: '10px' 
-                                    }}
-                                    onMouseDown={(e) => { e.preventDefault(); clearAllHighlights(); }}
-                                    title="不用選取，直接移除所有顏色"
-                                >
-                                    全部清除
-                                </button>
+                <>
+                    {/* 電腦版佈局 */}
+                    <div className="content">
+                        <div className="content-top">
+                            <div className="panel">
+                                <h2>文本內容 (ID: {currentItem.id}, 頁碼: {currentItem.page_number})</h2>
+                                <div className="info-box">用滑鼠選取文字後點擊下方按鈕: 黃色=承諾 / 藍色=證據 / 清除標記=橡皮擦(只清除選取的標記)</div>
+                                <div ref={dataTextRef} className="text-area"></div>
+                                <div className="highlight-btns">
+                                    <button className="highlight-btn highlight-btn-promise" onClick={() => highlightSelection('promise')}>標記承諾</button>
+                                    <button className="highlight-btn highlight-btn-evidence" onClick={() => highlightSelection('evidence')}>標記證據</button>
+                                    <button className="highlight-btn highlight-btn-clear" onClick={clearSelectedHighlights}>清除標記</button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="panel">
-                            <h2>標註欄位</h2>
+                            <div className="panel">
+                                <h2>標註欄位</h2>
 
-                            {/* 顯示不完整提示 */}
-                            {(() => {
-                                const issues = checkCurrentItemCompleteness();
-                                if (issues && issues.length > 0) {
-                                    return (
-                                        <div style={{
-                                            background: '#fecaca',
-                                            border: '2px solid #ef4444',
-                                            borderRadius: '8px',
-                                            padding: '12px',
-                                            marginBottom: '15px'
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'start' }}>
-                                                <span style={{ fontSize: '18px', marginRight: '8px' }}>⚠️</span>
-                                                <div>
-                                                    <strong style={{ color: '#991b1b', fontSize: '14px' }}>此筆資料不完整</strong>
-                                                    <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '13px', color: '#7f1d1d' }}>
-                                                        {issues.map((issue, idx) => (
-                                                            <li key={idx}>{issue}</li>
-                                                        ))}
-                                                    </ul>
+                                {/* 顯示不完整提示 */}
+                                {(() => {
+                                    const issues = checkCurrentItemCompleteness();
+                                    if (issues && issues.length > 0) {
+                                        return (
+                                            <div style={{
+                                                background: '#fecaca',
+                                                border: '2px solid #ef4444',
+                                                borderRadius: '8px',
+                                                padding: '12px',
+                                                marginBottom: '15px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'start' }}>
+                                                    <span style={{ fontSize: '18px', marginRight: '8px' }}>⚠️</span>
+                                                    <div>
+                                                        <strong style={{ color: '#991b1b', fontSize: '14px' }}>此筆資料不完整</strong>
+                                                        <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '13px', color: '#7f1d1d' }}>
+                                                            {issues.map((issue, idx) => (
+                                                                <li key={idx}>{issue}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            })()}
+                                        );
+                                    }
+                                    return null;
+                                })()}
 
-                            <div className="field">
-                                <label>ESG 類型</label>
-                                <div className="checkbox-group">
-                                    <button className={`checkbox-btn ${esgTypes.includes('E') ? 'active' : ''}`} onClick={() => toggleEsgType('E')}>E</button>
-                                    <button className={`checkbox-btn ${esgTypes.includes('S') ? 'active' : ''}`} onClick={() => toggleEsgType('S')}>S</button>
-                                    <button className={`checkbox-btn ${esgTypes.includes('G') ? 'active' : ''}`} onClick={() => toggleEsgType('G')}>G</button>
+                                <div className="field">
+                                    <label>ESG 類型</label>
+                                    <div className="checkbox-group">
+                                        <button className={`checkbox-btn ${esgTypes.includes('E') ? 'active' : ''}`} onClick={() => toggleEsgType('E')}>E</button>
+                                        <button className={`checkbox-btn ${esgTypes.includes('S') ? 'active' : ''}`} onClick={() => toggleEsgType('S')}>S</button>
+                                        <button className={`checkbox-btn ${esgTypes.includes('G') ? 'active' : ''}`} onClick={() => toggleEsgType('G')}>G</button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="field">
-                                <label title="判斷企業是否提出「未來導向」的目標或行動（Yes/No）。會對應到驗證時間軸。例如：「我們已經導入新風險管理系統」→ Yes + already；「我們將在 2030 年達到 50% 再生能源比例」→ Yes + more_than_5_years" style={{ cursor: 'help' }}>
-                                    承諾狀態 ⓘ
-                                </label>
-                                <select value={promiseStatus} onChange={e => setPromiseStatus(e.target.value)}>
-                                    <option value="">請選擇</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                </select>
-                            </div>
-                            {promiseStatus === 'Yes' && (
-                                <>
-                                    <div className="field">
-                                        <label title="判斷承諾需多久才能被驗證。within_2_years: 2年內、between_2_and_5_years: 2-5年、longer_than_5_years: 5年以上、already: 已執行/已完成" style={{ cursor: 'help' }}>
-                                            驗證時間軸 ⓘ
-                                        </label>
-                                        <select value={verificationTimeline} onChange={e => setVerificationTimeline(e.target.value)}>
-                                            <option value="">請選擇</option>
-                                            <option value="within_2_years">2年內</option>
-                                            <option value="between_2_and_5_years">2-5年</option>
-                                            <option value="longer_than_5_years">5年以上</option>
-                                            <option value="already">已執行</option>
-                                        </select>
-                                    </div>
-                                    <div className="field">
-                                        <label title="是否存在支持承諾的具體內容（數據、案例、措施等）。表格中的數據通常視為證據。" style={{ cursor: 'help' }}>
-                                            證據狀態 ⓘ
-                                        </label>
-                                        <select value={evidenceStatus} onChange={e => setEvidenceStatus(e.target.value)}>
-                                            <option value="">請選擇</option>
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-                                    {evidenceStatus === 'Yes' && (
+                                <div className="field">
+                                    <label title="判斷企業是否提出「未來導向」的目標或行動 (Yes/No)。會對應到驗證時間軸。例如:「我們已經導入新風險管理系統」→ Yes + already;「我們將在 2030 年達到 50% 再生能源比例」→ Yes + more_than_5_years" style={{ cursor: 'help' }}>
+                                        承諾狀態 ℹ
+                                    </label>
+                                    <select value={promiseStatus} onChange={e => setPromiseStatus(e.target.value)}>
+                                        <option value="">請選擇</option>
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select>
+                                </div>
+                                {promiseStatus === 'Yes' && (
+                                    <>
                                         <div className="field">
-                                            <label title="評估證據是否充足、清楚並與承諾直接相關。Clear: 證據具體清晰且與承諾直接相關；Not Clear: 證據模糊或僅部分相關；Misleading: 證據與承諾關聯弱或轉移焦點" style={{ cursor: 'help' }}>
-                                                證據品質 ⓘ
+                                            <label title="判斷承諾需多久才能被驗證。within_2_years: 2年內、between_2_and_5_years: 2-5年、longer_than_5_years: 5年以上、already: 已執行/已完成" style={{ cursor: 'help' }}>
+                                                驗證時間軸 ℹ
                                             </label>
-                                            <select value={evidenceQuality} onChange={e => setEvidenceQuality(e.target.value)}>
+                                            <select value={verificationTimeline} onChange={e => setVerificationTimeline(e.target.value)}>
                                                 <option value="">請選擇</option>
-                                                <option value="Clear">清晰</option>
-                                                <option value="Not Clear">不清晰</option>
-                                                <option value="Misleading">誤導性</option>
+                                                <option value="within_2_years">2年內</option>
+                                                <option value="between_2_and_5_years">2-5年</option>
+                                                <option value="longer_than_5_years">5年以上</option>
+                                                <option value="already">已執行</option>
                                             </select>
                                         </div>
-                                    )}
-                                </>
-                            )}
-                            {promiseStatus === 'No' && (
-                                <>
+                                        <div className="field">
+                                            <label title="是否存在支持承諾的具體內容(數據、案例、措施等)。表格中的數據通常視為證據。" style={{ cursor: 'help' }}>
+                                                證據狀態 ℹ
+                                            </label>
+                                            <select value={evidenceStatus} onChange={e => setEvidenceStatus(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                <option value="Yes">Yes</option>
+                                                <option value="No">No</option>
+                                            </select>
+                                        </div>
+                                        {evidenceStatus === 'Yes' && (
+                                            <div className="field">
+                                                <label title="評估證據是否充足、清楚並與承諾直接相關。Clear: 證據具體清晰且與承諾直接相關;Not Clear: 證據模糊或僅部分相關;Misleading: 證據與承諾關聯弱或轉移焦點" style={{ cursor: 'help' }}>
+                                                    證據品質 ℹ
+                                                </label>
+                                                <select value={evidenceQuality} onChange={e => setEvidenceQuality(e.target.value)}>
+                                                    <option value="">請選擇</option>
+                                                    <option value="Clear">清晰</option>
+                                                    <option value="Not Clear">不清晰</option>
+                                                    <option value="Misleading">誤導性</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                {promiseStatus === 'No' && (
+                                    <>
+                                        <div className="field">
+                                            <label title="判斷承諾需多久才能被驗證。within_2_years: 2年內、between_2_and_5_years: 2-5年、longer_than_5_years: 5年以上、already: 已執行/已完成" style={{ cursor: 'help' }}>
+                                                驗證時間軸 ℹ
+                                            </label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                        <div className="field">
+                                            <label title="是否存在支持承諾的具體內容(數據、案例、措施等)。表格中的數據通常視為證據。" style={{ cursor: 'help' }}>
+                                                證據狀態 ℹ
+                                            </label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                        <div className="field">
+                                            <label title="評估證據是否充足、清楚並與承諾直接相關(Clear: 清晰、Misleading: 誤導性、Not Clear: 不清晰)" style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>
+                                                證據品質 ℹ
+                                            </label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                    </>
+                                )}
+                                {promiseStatus === 'Yes' && evidenceStatus === 'No' && (
                                     <div className="field">
-                                        <label title="判斷承諾需多久才能被驗證。within_2_years: 2年內、between_2_and_5_years: 2-5年、longer_than_5_years: 5年以上、already: 已執行/已完成" style={{ cursor: 'help' }}>
-                                            驗證時間軸 ⓘ
+                                        <label title="評估證據是否充足、清楚並與承諾直接相關(Clear: 清晰、Misleading: 誤導性、Not Clear: 不清晰)" style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>
+                                            證據品質 ℹ
                                         </label>
                                         <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
                                     </div>
-                                    <div className="field">
-                                        <label title="是否存在支持承諾的具體內容（數據、案例、措施等）。表格中的數據通常視為證據。" style={{ cursor: 'help' }}>
-                                            證據狀態 ⓘ
-                                        </label>
-                                        <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
-                                    </div>
-                                    <div className="field">
-                                        <label title="評估證據是否充足、清楚並與承諾直接相關（Clear: 清晰、Misleading: 誤導性、Not Clear: 不清晰）" style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>
-                                            證據品質 ⓘ
-                                        </label>
-                                        <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
-                                    </div>
-                                </>
-                            )}
-                            {promiseStatus === 'Yes' && evidenceStatus === 'No' && (
-                                <div className="field">
-                                    <label title="評估證據是否充足、清楚並與承諾直接相關（Clear: 清晰、Misleading: 誤導性、Not Clear: 不清晰）" style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>
-                                        證據品質 ⓘ
-                                    </label>
-                                    <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
-                                </div>
-                            )}
+                                )}
+                            </div>
+                        </div>
+                         <div className="panel">
+                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                             <h3 style={{ margin: 0 }}>PDF 文件</h3>
+                             {user.role === 'admin' && (
+                               <button
+                                 onClick={() => setShowPageAdjust(!showPageAdjust)}
+                                 className="btn"
+                                 style={{
+                                   background: '#f59e0b',
+                                   color: 'white',
+                                   padding: '5px 10px',
+                                   fontSize: '12px'
+                                 }}
+                               >
+                                 {showPageAdjust ? '取消調整' : '🔧 調整頁碼'}
+                               </button>
+                             )}
+                           </div>
+
+                           {showPageAdjust && user.role === 'admin' && (
+                             <div style={{
+                               background: '#fef3c7',
+                               border: '2px solid #f59e0b',
+                               borderRadius: '8px',
+                               padding: '15px',
+                               marginBottom: '15px'
+                             }}>
+                               <div style={{ marginBottom: '10px' }}>
+                                 <strong>當前頁碼:</strong>{currentItem.page_number}
+                               </div>
+                               <div style={{ marginBottom: '10px' }}>
+                                 <strong>資料 ID:</strong>{currentItem.id}
+                               </div>
+
+                               {/* 自動對齊按鈕 */}
+                               <div style={{ marginBottom: '15px' }}>
+                                 <button
+                                   onClick={handleAutoAlign}
+                                   disabled={!!autoAlignProgress}
+                                   className="btn"
+                                   style={{
+                                     background: '#3b82f6',
+                                     color: 'white',
+                                     padding: '8px 15px',
+                                     width: '100%',
+                                     fontSize: '14px'
+                                   }}
+                                 >
+                                   {autoAlignProgress ? '分析中...' : '🔍 自動尋找正確頁碼'}
+                                 </button>
+                               </div>
+
+                               {/* 進度顯示 */}
+                               {autoAlignProgress && (
+                                 <div style={{
+                                   background: '#dbeafe',
+                                   border: '1px solid #3b82f6',
+                                   borderRadius: '4px',
+                                   padding: '10px',
+                                   marginBottom: '15px'
+                                 }}>
+                                   <div style={{ fontSize: '13px', marginBottom: '5px' }}>
+                                     {autoAlignProgress.status}
+                                   </div>
+                                   <div style={{ fontSize: '12px', color: '#1e40af' }}>
+                                     進度:{autoAlignProgress.current} / {autoAlignProgress.total}
+                                   </div>
+                                 </div>
+                               )}
+
+                               {/* 建議結果 */}
+                               {suggestedPage && (
+                                 <div style={{
+                                   background: '#d1fae5',
+                                   border: '2px solid #10b981',
+                                   borderRadius: '4px',
+                                   padding: '10px',
+                                   marginBottom: '15px'
+                                 }}>
+                                   <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '5px' }}>
+                                     ✓ 建議頁碼:第 {suggestedPage.pageNumber} 頁
+                                   </div>
+                                   <div style={{ fontSize: '12px', color: '#065f46' }}>
+                                     相似度:{suggestedPage.similarity.toFixed(1)}%
+                                   </div>
+                                 </div>
+                               )}
+
+                               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                 <label style={{ whiteSpace: 'nowrap' }}>調整為頁碼:</label>
+                                 <input
+                                   type="number"
+                                   min="1"
+                                   value={newPageNumber}
+                                   onChange={(e) => setNewPageNumber(e.target.value)}
+                                   placeholder="輸入新頁碼"
+                                   style={{
+                                     padding: '5px 10px',
+                                     border: '1px solid #ccc',
+                                     borderRadius: '4px',
+                                     width: '100px'
+                                   }}
+                                 />
+                                 <button
+                                   onClick={handlePageNumberAdjust}
+                                   className="btn"
+                                   style={{
+                                     background: '#10b981',
+                                     color: 'white',
+                                     padding: '5px 15px'
+                                   }}
+                                 >
+                                   確認調整
+                                 </button>
+                               </div>
+                               <div style={{ marginTop: '10px', fontSize: '12px', color: '#92400e' }}>
+                                 ⚠️ 注意:調整頁碼會同時更新 PDF URL,請確認新頁碼正確
+                               </div>
+                             </div>
+                           )}
+
+                           <PDFViewer
+                               pdfUrl={currentItem.source_url}
+                               pageNumber={currentItem.page_number}
+                               bbox={currentItem.bbox}
+                           />
                         </div>
                     </div>
-                     <div className="panel">
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                         <h3 style={{ margin: 0 }}>PDF 文件</h3>
-                         {user.role === 'admin' && (
-                           <button
-                             onClick={() => setShowPageAdjust(!showPageAdjust)}
-                             className="btn"
-                             style={{
-                               background: '#f59e0b',
-                               color: 'white',
-                               padding: '5px 10px',
-                               fontSize: '12px'
-                             }}
-                           >
-                             {showPageAdjust ? '取消調整' : '🔧 調整頁碼'}
-                           </button>
-                         )}
-                       </div>
 
-                       {showPageAdjust && user.role === 'admin' && (
-                         <div style={{
-                           background: '#fef3c7',
-                           border: '2px solid #f59e0b',
-                           borderRadius: '8px',
-                           padding: '15px',
-                           marginBottom: '15px'
-                         }}>
-                           <div style={{ marginBottom: '10px' }}>
-                             <strong>當前頁碼：</strong>{currentItem.page_number}
-                           </div>
-                           <div style={{ marginBottom: '10px' }}>
-                             <strong>資料 ID：</strong>{currentItem.id}
-                           </div>
+                    {/* 手機版佈局 */}
+                    <div className="mobile-content-wrapper">
+                        {/* 文本分頁 */}
+                        <div className={`mobile-tab-content ${mobileActiveTab === 'text' ? 'active' : ''}`}>
+                            <div className="panel">
+                                <h2>文本內容</h2>
+                                <div className="info-box">用滑鼠選取文字後點擊下方按鈕：黃色=承諾 / 藍色=證據 / 清除標記=橡皮擦</div>
+                                <div ref={dataTextRef} className="text-area"></div>
+                                <div className="highlight-btns">
+                                    <button className="highlight-btn highlight-btn-promise" onClick={() => highlightSelection('promise')}>標記承諾</button>
+                                    <button className="highlight-btn highlight-btn-evidence" onClick={() => highlightSelection('evidence')}>標記證據</button>
+                                    <button className="highlight-btn highlight-btn-clear" onClick={clearSelectedHighlights}>清除標記</button>
+                                </div>
+                            </div>
+                        </div>
 
-                           {/* 自動對齊按鈕 */}
-                           <div style={{ marginBottom: '15px' }}>
-                             <button
-                               onClick={handleAutoAlign}
-                               disabled={!!autoAlignProgress}
-                               className="btn"
-                               style={{
-                                 background: '#3b82f6',
-                                 color: 'white',
-                                 padding: '8px 15px',
-                                 width: '100%',
-                                 fontSize: '14px'
-                               }}
-                             >
-                               {autoAlignProgress ? '分析中...' : '🔍 自動尋找正確頁碼'}
-                             </button>
-                           </div>
+                        {/* 標註分頁 */}
+                        <div className={`mobile-tab-content ${mobileActiveTab === 'annotation' ? 'active' : ''}`}>
+                            <div className="panel">
+                                <h2>標註欄位</h2>
+                                {(() => {
+                                    const issues = checkCurrentItemCompleteness();
+                                    if (issues && issues.length > 0) {
+                                        return (
+                                            <div style={{
+                                                background: '#fecaca',
+                                                border: '2px solid #ef4444',
+                                                borderRadius: '8px',
+                                                padding: '12px',
+                                                marginBottom: '15px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'start' }}>
+                                                    <span style={{ fontSize: '18px', marginRight: '8px' }}>⚠️</span>
+                                                    <div>
+                                                        <strong style={{ color: '#991b1b', fontSize: '14px' }}>此筆資料不完整</strong>
+                                                        <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '13px', color: '#7f1d1d' }}>
+                                                            {issues.map((issue, idx) => (
+                                                                <li key={idx}>{issue}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                                <div className="field">
+                                    <label>ESG 類型</label>
+                                    <div className="checkbox-group">
+                                        <button className={`checkbox-btn ${esgTypes.includes('E') ? 'active' : ''}`} onClick={() => toggleEsgType('E')}>E</button>
+                                        <button className={`checkbox-btn ${esgTypes.includes('S') ? 'active' : ''}`} onClick={() => toggleEsgType('S')}>S</button>
+                                        <button className={`checkbox-btn ${esgTypes.includes('G') ? 'active' : ''}`} onClick={() => toggleEsgType('G')}>G</button>
+                                    </div>
+                                </div>
+                                <div className="field">
+                                    <label>承諾狀態</label>
+                                    <select value={promiseStatus} onChange={e => setPromiseStatus(e.target.value)}>
+                                        <option value="">請選擇</option>
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select>
+                                </div>
+                                {promiseStatus === 'Yes' && (
+                                    <>
+                                        <div className="field">
+                                            <label>驗證時間軸</label>
+                                            <select value={verificationTimeline} onChange={e => setVerificationTimeline(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                <option value="within_2_years">2年內</option>
+                                                <option value="between_2_and_5_years">2-5年</option>
+                                                <option value="longer_than_5_years">5年以上</option>
+                                                <option value="already">已執行</option>
+                                            </select>
+                                        </div>
+                                        <div className="field">
+                                            <label>證據狀態</label>
+                                            <select value={evidenceStatus} onChange={e => setEvidenceStatus(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                <option value="Yes">Yes</option>
+                                                <option value="No">No</option>
+                                            </select>
+                                        </div>
+                                        {evidenceStatus === 'Yes' && (
+                                            <div className="field">
+                                                <label>證據品質</label>
+                                                <select value={evidenceQuality} onChange={e => setEvidenceQuality(e.target.value)}>
+                                                    <option value="">請選擇</option>
+                                                    <option value="Clear">清晰</option>
+                                                    <option value="Not Clear">不清晰</option>
+                                                    <option value="Misleading">誤導性</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                {promiseStatus === 'No' && (
+                                    <>
+                                        <div className="field">
+                                            <label>驗證時間軸</label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                        <div className="field">
+                                            <label>證據狀態</label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                        <div className="field">
+                                            <label>證據品質</label>
+                                            <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                        </div>
+                                    </>
+                                )}
+                                {promiseStatus === 'Yes' && evidenceStatus === 'No' && (
+                                    <div className="field">
+                                        <label>證據品質</label>
+                                        <input type="text" value="N/A" disabled style={{ background: '#f3f4f6', color: '#6b7280' }} />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                           {/* 進度顯示 */}
-                           {autoAlignProgress && (
-                             <div style={{
-                               background: '#dbeafe',
-                               border: '1px solid #3b82f6',
-                               borderRadius: '4px',
-                               padding: '10px',
-                               marginBottom: '15px'
-                             }}>
-                               <div style={{ fontSize: '13px', marginBottom: '5px' }}>
-                                 {autoAlignProgress.status}
-                               </div>
-                               <div style={{ fontSize: '12px', color: '#1e40af' }}>
-                                 進度：{autoAlignProgress.current} / {autoAlignProgress.total}
-                               </div>
-                             </div>
-                           )}
+                        {/* PDF 分頁 */}
+                        <div className={`mobile-tab-content ${mobileActiveTab === 'pdf' ? 'active' : ''}`}>
+                            <div className="panel">
+                                <h2>PDF 文件</h2>
+                                <PDFViewer
+                                    pdfUrl={currentItem.source_url}
+                                    pageNumber={currentItem.page_number}
+                                    bbox={currentItem.bbox}
+                                />
+                            </div>
+                        </div>
 
-                           {/* 建議結果 */}
-                           {suggestedPage && (
-                             <div style={{
-                               background: '#d1fae5',
-                               border: '2px solid #10b981',
-                               borderRadius: '4px',
-                               padding: '10px',
-                               marginBottom: '15px'
-                             }}>
-                               <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '5px' }}>
-                                 ✓ 建議頁碼：第 {suggestedPage.pageNumber} 頁
-                               </div>
-                               <div style={{ fontSize: '12px', color: '#065f46' }}>
-                                 相似度：{suggestedPage.similarity.toFixed(1)}%
-                               </div>
-                             </div>
-                           )}
+                        {/* 總覽分頁 */}
+                        <div className={`mobile-tab-content ${mobileActiveTab === 'overview' ? 'active' : ''}`}>
+                            <div className="mobile-overview-grid">
+                                {allTasks.map(task => (
+                                    <div 
+                                        key={task.id} 
+                                        onClick={() => {
+                                            const seqNum = task.sequence;
+                                            handleSequenceJump({ target: { value: seqNum } });
+                                            setMobileActiveTab('text');
+                                        }}
+                                        style={{
+                                            background: 'white',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '8px',
+                                            padding: '15px',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '16px' }}>第 {task.sequence} 筆</div>
+                                            <span style={{ fontSize: '20px', color: task.is_marked ? '#ec4899' : '#e5e7eb' }}>
+                                                {task.is_marked ? '★' : '☆'}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+                                            {task.skipped && <span style={{ fontSize: '12px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '12px' }}>待補</span>}
+                                            {task.status === 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '12px' }}>完成</span>}
+                                            {task.status !== 'completed' && !task.skipped && <span style={{ fontSize: '12px', background: '#f3f4f6', color: '#6b7280', padding: '2px 8px', borderRadius: '12px' }}>未填</span>}
+                                        </div>
+                                        <div style={{ fontSize: '14px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {task.preview_text}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
+                                            頁碼: {task.page_number}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
-                           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                             <label style={{ whiteSpace: 'nowrap' }}>調整為頁碼：</label>
-                             <input
-                               type="number"
-                               min="1"
-                               value={newPageNumber}
-                               onChange={(e) => setNewPageNumber(e.target.value)}
-                               placeholder="輸入新頁碼"
-                               style={{
-                                 padding: '5px 10px',
-                                 border: '1px solid #ccc',
-                                 borderRadius: '4px',
-                                 width: '100px'
-                               }}
-                             />
-                             <button
-                               onClick={handlePageNumberAdjust}
-                               className="btn"
-                               style={{
-                                 background: '#10b981',
-                                 color: 'white',
-                                 padding: '5px 15px'
-                               }}
-                             >
-                               確認調整
-                             </button>
-                           </div>
-                           <div style={{ marginTop: '10px', fontSize: '12px', color: '#92400e' }}>
-                             ⚠️ 注意：調整頁碼會同時更新 PDF URL，請確認新頁碼正確
-                           </div>
-                         </div>
-                       )}
-
-                       <PDFViewer
-                           pdfUrl={currentItem.source_url}
-                           pageNumber={currentItem.page_number}
-                           bbox={currentItem.bbox}
-                       />
+                        {/* 底部工具列 */}
+                        <div className="mobile-tabs">
+                            <button 
+                                className={`mobile-tab ${mobileActiveTab === 'text' ? 'active' : ''}`}
+                                onClick={() => setMobileActiveTab('text')}
+                            >
+                                文本
+                            </button>
+                            <button 
+                                className={`mobile-tab ${mobileActiveTab === 'annotation' ? 'active' : ''}`}
+                                onClick={() => setMobileActiveTab('annotation')}
+                            >
+                                標註
+                            </button>
+                            <button 
+                                className={`mobile-tab ${mobileActiveTab === 'pdf' ? 'active' : ''}`}
+                                onClick={() => setMobileActiveTab('pdf')}
+                            >
+                                PDF
+                            </button>
+                            <button 
+                                className={`mobile-tab ${mobileActiveTab === 'overview' ? 'active' : ''}`}
+                                onClick={() => setMobileActiveTab('overview')}
+                            >
+                                總覽
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

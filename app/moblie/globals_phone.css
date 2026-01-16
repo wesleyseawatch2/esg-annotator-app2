@@ -1,3 +1,11 @@
+/* 預設隱藏手機版專用元素 (在電腦版不顯示) */
+.mobile-reference-links,
+.mobile-content-wrapper,
+.mobile-back-arrow,
+.mobile-tabs {
+    display: none;
+}
+
 * { 
     margin: 0; 
     padding: 0; 
@@ -482,103 +490,221 @@ body {
   border-radius: 4px;
 }
 
-/* --- 重標註任務列表樣式 --- */
-.reannotation-container {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    overflow: hidden;
-    margin-top: 20px;
-}
+/* ========================================
+   手機版響應式設計 (螢幕寬度 <= 768px)
+   ======================================== */
 
-.reannotation-header {
-    padding: 15px 20px;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+@media (max-width: 768px) {
+    body {
+        padding: 0;
+    }
 
-.reannotation-header h3 {
-    margin: 0;
-    font-size: 16px;
-    color: #1e293b;
-    font-weight: 700;
-}
+    .container {
+        padding: 0;
+    }
 
-.re-table {
-    width: 100%;
-    border-collapse: collapse;
-}
+    /* 手機版顯示按鈕中的簡化文字 */
+    .hide-on-mobile + span {
+        display: inline !important;
+    }
 
-.re-table th {
-    background: #f8fafc;
-    color: #64748b;
-    font-size: 13px;
-    font-weight: 600;
-    text-align: left;
-    padding: 12px 20px;
-    border-bottom: 1px solid #e2e8f0;
-}
+    /* --- 專案選擇頁面：參考資料連結 --- */
+    .mobile-reference-links {
+        display: flex;
+        flex-direction: row;      /* 改成水平排列 */
+        gap: 10px;                /* 按鈕之間的間距 */
+        margin-bottom: 20px;
+        margin-top: 5px;
+    }
 
-.re-table td {
-    padding: 12px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 14px;
-    color: #334155;
-    vertical-align: middle;
-}
+    .mobile-reference-links a {
+        flex: 1;                  /* 兩個按鈕平分寬度 (各50%) */
+        display: flex;            /* 使用 Flex 讓文字垂直水平置中 */
+        align-items: center;
+        justify-content: center;
+        
+        padding: 10px 5px;        /* 稍微減少左右 padding 避免空間不足 */
+        background: white;
+        color: #4b5563;
+        text-decoration: none;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        font-size: 13px;          /* 字體稍微縮小一點，確保兩行放得下 */
+        font-weight: 600;
+        text-align: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        line-height: 1.4;         /* 讓長標題換行時比較好看 */
+    }
 
-.re-table tr:hover {
-    background-color: #f8fafc;
-}
+    /* --- 標註頁面：隱藏電腦版才有的按鈕 --- */
+    .hide-on-mobile {
+        display: none !important;
+    }
 
-.re-table tr:last-child td {
-    border-bottom: none;
-}
+    /* --- 標註頁面：header 調整 --- */
+    .header {
+        padding: 10px;
+        margin-bottom: 0;
+        border-radius: 0;
+    }
 
-/* 狀態圓點 */
-.status-dot {
-    height: 10px;
-    width: 10px;
-    border-radius: 50%;
-    display: inline-block;
-}
+    .header h1 {
+        font-size: 16px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 
-.status-dot.red { background-color: #ef4444; }
-.status-dot.yellow { background-color: #f59e0b; }
-.status-dot.green { background-color: #10b981; }
+    .mobile-back-arrow {
+        display: inline-block;
+        font-size: 20px;
+        cursor: pointer;
+        color: #6b7280;
+    }
 
-/* 文本預覽 (限制行數) */
-.text-preview {
-    max-width: 400px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: #475569;
-}
+    .controls {
+        flex-direction: column;
+        gap: 8px;
+    }
 
-/* 一致性分數 */
-.score-badge {
-    font-weight: 700;
-    font-family: monospace;
-    font-size: 14px;
-}
+    .progress {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+    }
 
-/* 重標註按鈕 */
-.btn-reannotate {
-    background-color: #f59e0b;
-    color: white;
-    border: none;
-    padding: 6px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    transition: background 0.2s;
-}
+    .progress > div {
+        width: 100%;
+    }
 
-.btn-reannotate:hover {
-    background-color: #d97706;
+    /* --- 手機版分頁工具列 --- */
+    .mobile-tabs {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 2px solid #e5e7eb;
+        display: flex;
+        justify-content: space-around;
+        z-index: 1000;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .mobile-tab {
+        flex: 1;
+        padding: 12px 8px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        color: #6b7280;
+        border: none;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mobile-tab.active {
+        color: #3b82f6;
+        background: #eff6ff;
+        border-top: 3px solid #3b82f6;
+    }
+
+    /* --- 手機版內容區域 --- */
+    .mobile-content-wrapper {
+        display: block;       /* 覆蓋預設的 display: none */
+        padding-bottom: 60px; /* 為底部工具列留空間 */
+    }
+
+    .mobile-tab-content {
+        display: none;
+        padding: 15px;
+    }
+
+    .mobile-tab-content.active {
+        display: block;
+    }
+
+    /* --- 電腦版佈局在手機上隱藏 --- */
+    .content,
+    .content-top {
+        display: none;
+    }
+
+    /* --- 手機版文本區域 --- */
+    .text-area {
+        min-height: 300px;
+        font-size: 15px;
+        line-height: 1.6;
+    }
+
+    /* --- 手機版按鈕調整 --- */
+    .nav-btns {
+        display: flex;
+        flex-wrap: nowrap;  /* ✅ 改成不換行 */
+        width: 100%;
+        gap: 6px;           /* 按鈕間距縮小 */
+    }
+
+    /* 針對所有按鈕先做重置 */
+    .nav-btns .btn, 
+    .nav-btns .btn-emerald {
+        min-width: auto;    /* ✅ 移除原本的 45% 限制 */
+        padding: 8px 0;     /* 減少左右內距 */
+        height: 42px;       /* 固定高度讓視覺整齊 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* 設定小按鈕：標記(☆)、上一筆(←)、跳過(⏭️) */
+    /* 邏輯：選取不是「儲存」的所有按鈕 */
+    .nav-btns .btn:not(.btn-emerald) {
+        flex: 0 0 46px;     /* ✅ 固定寬度 46px，剛好放得下 Icon */
+        font-size: 18px;    /* Icon稍微大一點 */
+    }
+
+    /* 設定大按鈕：儲存 & 下一筆 */
+    .nav-btns .btn-emerald {
+        flex: 1;            /* ✅ 佔據剩餘所有空間 */
+        font-size: 14px;
+        font-weight: bold;
+        padding: 0 10px;    /* 文字左右留一點空間 */
+    }
+
+    /* --- 手機版下拉選單 --- */
+    .progress select {
+        font-size: 13px;
+        padding: 6px 8px;
+    }
+
+    /* --- 手機版 PDF 容器 --- */
+    #pdfContainer {
+        height: 500px;
+    }
+
+    /* --- 手機版面板 --- */
+    .panel {
+        padding: 15px;
+        border-radius: 0;
+        box-shadow: none;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .panel h2 {
+        font-size: 16px;
+        margin-bottom: 12px;
+    }
+
+    /* --- 手機版總覽頁面 --- */
+    .mobile-overview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 15px;
+    }
 }
