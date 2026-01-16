@@ -19,18 +19,18 @@ export async function GET(request) {
         // --- 1. 從資料庫撈資料 ---
         const result = await sql`
             WITH ProjectSource AS (
-                SELECT 
-                    id, 
+                SELECT
+                    id,
                     original_data,
-                    ROW_NUMBER() OVER (ORDER BY id ASC) as sequence
+                    ROW_NUMBER() OVER (ORDER BY page_number ASC, id ASC) as sequence
                 FROM source_data
                 WHERE project_id = ${projectId}
             ),
             ModifyCounts AS (
-                SELECT source_data_id, COUNT(*) as log_count
-                FROM reannotation_audit_log
+                SELECT source_data_id, COALESCE(save_count, 0) as save_count
+                FROM annotations
                 WHERE user_id = ${userId}
-                GROUP BY source_data_id
+                AND reannotation_round = 1
             ),
             LatestAnnotations AS (
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
@@ -56,7 +56,7 @@ export async function GET(request) {
                 la.evidence_status,
                 la.evidence_quality,
                 la.reannotation_round,
-                COALESCE(mc.log_count, 0) as modify_count, -- 用 Log 數量作為重標次數
+                COALESCE(mc.save_count, 0) as modify_count, -- 用 save_count 作為儲存次數
                 ps.sequence,
                 ps.original_data
             FROM LatestAnnotations la

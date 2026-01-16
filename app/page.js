@@ -1039,6 +1039,9 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             if (result.success && Array.isArray(result.tasks)) {
             // 只留下「需要重標註 (分數 < 0.8)」或者「已修正過 (modify_count > 0)」的資料
                 const filteredTasks = result.tasks.filter(t => t.needs_reannotation || t.modify_count > 0);
+                // 按 sequence 排序（原始標註順序）
+                filteredTasks.sort((a, b) => parseInt(a.sequence) - parseInt(b.sequence));
+                console.log('[reannotationList] 排序後前5筆:', filteredTasks.slice(0, 5).map(t => ({ id: t.id, seq: t.sequence })));
                 setReannotationList(filteredTasks);
             } else {
                 setReannotationList([]);
@@ -1099,6 +1102,12 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         }
 
         // --- 2. 準備並儲存資料 ---
+        // 判斷是否在重標模式：專案已完成 + 目前這筆在重標註列表中
+        const isProjectCompleted = progress.completed + skippedCount >= progress.total && progress.total > 0;
+        const isInReannotationList = reannotationList && reannotationList.length > 0 &&
+            reannotationList.some(t => String(t.id) === String(currentItem.id));
+        const isReannotationMode = isProjectCompleted && isInReannotationList;
+
         const annotationData = {
             source_data_id: currentItem.id,
             user_id: user.id,
@@ -1108,8 +1117,15 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
             verification_timeline: verificationTimeline,
             evidence_status: evidenceStatus,
             evidence_string: evidenceText,
-            evidence_quality: evidenceQuality
+            evidence_quality: evidenceQuality,
+            isReannotationMode  // 傳給後端判斷要存到哪個 round
         };
+
+        console.log('[handleSaveAndNext] 儲存資料:', {
+            source_data_id: annotationData.source_data_id,
+            currentItem_id: currentItem.id,
+            isReannotationMode
+        });
 
         const result = await saveAnnotation(annotationData);
         if (!result.success) {
@@ -1203,69 +1219,40 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
     const handleSkip = async () => {
         if (!currentItem) return;
 
-        const annotationData = {
-            source_data_id: currentItem.id,
-            user_id: user.id,
-            esg_type: '',
-            promise_status: '',
-            promise_string: '',
-            verification_timeline: '',
-            evidence_status: '',
-            evidence_string: '',
-            evidence_quality: '',
-            skipped: true
-        };
+        // 判斷是否在重標模式（目前這筆在重標註列表中）
+        const isInReannotationMode = reannotationList && reannotationList.length > 0 && reannotationList.some(t => String(t.id) === String(currentItem.id));
 
-        const result = await saveAnnotation(annotationData);
-        if (!result.success) {
-            alert(`儲存失敗: ${result.error}`);
-            return;
+        let nextTask = null;
+
+        if (isInReannotationMode) {
+            // 從重標註列表找下一筆
+            const currentIndex = reannotationList.findIndex(t => String(t.id) === String(currentItem.id));
+
+            if (currentIndex !== -1 && currentIndex < reannotationList.length - 1) {
+                const nextInList = reannotationList[currentIndex + 1];
+                const res = await getTaskBySequence(project.id, user.id, nextInList.sequence);
+                if (res.task) {
+                    nextTask = res.task;
+                }
+            }
+        } else {
+            // 一般模式：跳到順序的下一筆
+            const nextRes = await getNextTaskAfterCurrent(project.id, user.id, currentItem.id);
+            if (nextRes.task) {
+                nextTask = nextRes.task;
+            }
         }
 
-        // 清除所有標記（切換到下一筆時重置）
-        if (dataTextRef.current && currentItem) {
-            dataTextRef.current.innerHTML = currentItem.original_data;
-        }
-        setEsgTypes([]);
-        setPromiseStatus('');
-        setVerificationTimeline('');
-        setEvidenceStatus('');
-        setEvidenceQuality('');
-
-        // 載入下一筆未標註的資料（而不是順序的下一筆）
-        const nextRes = await getNextTaskForUser(project.id, user.id);
-        if (nextRes.task) {
-            setCurrentItem(nextRes.task);
-            loadTaskData(nextRes.task);
+        // 更新到下一筆或回到完成頁面
+        if (nextTask) {
+            setCurrentItem(nextTask);
+            loadTaskData(nextTask);
+            // 更新文字內容
+            if (dataTextRef.current && nextTask.original_data) {
+                dataTextRef.current.innerHTML = nextTask.original_data;
+            }
         } else {
             setCurrentItem(null);
-        }
-
-        // 更新進度和任務列表
-        const projRes = await getProjectsWithProgress(user.id);
-        const proj = projRes.projects?.find(p => p.id === project.id);
-        if (proj) setProgress({
-            completed: parseInt(proj.completed_tasks) || 0,
-            total: parseInt(proj.total_tasks) || 0
-        });
-
-        // 重新載入所有任務及其狀態
-        const allTasksRes = await getAllTasksWithStatus(project.id, user.id);
-        if (allTasksRes.tasks) {
-            // 先去重
-            const uniqueTasks = getUniqueTasks(allTasksRes.tasks);
-            setAllTasks(uniqueTasks);
-            
-            const skipped = uniqueTasks.filter(t => t.skipped === true).length;
-            setSkippedCount(skipped);
-        }
-
-        // 如果有驗證結果，重新驗證以更新警告框
-        if (validationResult) {
-            const newValidation = await validateCompletedAnnotations(project.id, user.id);
-            if (!newValidation.error) {
-                setValidationResult(newValidation);
-            }
         }
     };
 
@@ -2200,21 +2187,24 @@ return (
                             </button>
 
                             <button
-                                className="btn"
-                                onClick={handleSkip}
-                                disabled={!currentItem}
-                                style={{ background: '#f59e0b', color: 'white' }}
-                            >
-                                ⏭️ 跳過
-                            </button>
-
-                            <button
                                 className="nav-btn btn-emerald"
                                 onClick={handleSaveAndNext}
                                 disabled={!currentItem}
                             >
                                 儲存 & 下一筆
                             </button>
+
+                            {/* 初次標註模式才顯示「下一筆」按鈕（不儲存直接跳） */}
+                            {!(progress.completed + skippedCount >= progress.total && progress.total > 0) && (
+                                <button
+                                    className="btn"
+                                    onClick={handleSkip}
+                                    disabled={!currentItem}
+                                    style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
+                                >
+                                    下一筆 →
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

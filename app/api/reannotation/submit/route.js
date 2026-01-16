@@ -179,7 +179,7 @@ export async function POST(request) {
           NOW(),
           NOW()
         )
-        ON CONFLICT (source_data_id, user_id, version)
+        ON CONFLICT (source_data_id, user_id, reannotation_round)
         DO UPDATE SET
           esg_type = EXCLUDED.esg_type,
           promise_status = EXCLUDED.promise_status,
