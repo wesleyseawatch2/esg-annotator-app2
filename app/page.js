@@ -1955,6 +1955,7 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
         }
     };
 
+    // 修正後的 highlightByPositions 函式 (加入 try-catch 防護)
     const highlightByPositions = (positionsStr, type, plainText) => {
         if (!dataTextRef.current || !positionsStr) return;
 
@@ -1989,17 +1990,25 @@ function AnnotationScreen({ user, project, onBack, onShowOverview, initialSequen
                     const relativeStart = start - nodeStart;
                     const relativeEnd = end - nodeStart;
 
-                    const range = document.createRange();
-                    range.setStart(node, relativeStart);
-                    range.setEnd(node, relativeEnd);
+                    // --- 修正開始：加入邊界檢查與錯誤捕獲 ---
+                    if (relativeStart > nodeLength || relativeEnd > nodeLength) {
+                        console.warn(`[標記略過] 索引越界: 嘗試在長度 ${nodeLength} 的節點標記 ${relativeStart}-${relativeEnd}`);
+                        break;
+                    }
 
-                    const span = document.createElement('span');
-                    span.className = `highlight-${type}`;
                     try {
+                        const range = document.createRange();
+                        range.setStart(node, relativeStart);
+                        range.setEnd(node, relativeEnd);
+
+                        const span = document.createElement('span');
+                        span.className = `highlight-${type}`;
                         range.surroundContents(span);
                     } catch (err) {
-                        console.warn('無法標記範圍:', err);
+                        console.warn('無法標記範圍 (可能是結構變更或索引錯誤):', err);
                     }
+                    // --- 修正結束 ---
+                    
                     break;
                 }
 
