@@ -2137,7 +2137,7 @@ return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
                         {/* 1. 個人進度 */}
                         <div style={{ fontSize: '14px', color: '#4b5563', fontWeight: '500' }}>
-                            您的個人進度: {progress.completed} / {progress.total}
+                            目前完成筆數：{progress.completed} / {progress.total}
                         </div>
 
                         {/* 2. 跳轉選單 */}
