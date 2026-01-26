@@ -73,16 +73,49 @@ function SimpleMarkdown({ content }) {
     );
 }
 
-// 輔助函式：處理行內樣式 (**粗體**)
+// 輔助函式：處理行內樣式
 function parseInlineStyles(text) {
-    // 簡單替換 **text** 為 <strong>text</strong>
-    const parts = text.split(/(\*\*.*?\*\*)/g);
-    return parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={i}>{part.slice(2, -2)}</strong>;
+    const elements = [];
+    let remaining = text;
+    let key = 0;
+
+    const regex = /(\*\*([^*]+)\*\*)|(\[([^\]]+)\]\(([^)]+)\))/;
+
+    while (remaining.length > 0) {
+        const match = remaining.match(regex);
+        if (!match) {
+            elements.push(<span key={key++}>{remaining}</span>);
+            break;
         }
-        return part;
-    });
+        // match 前的普通文字
+        if (match.index > 0) {
+            elements.push(
+                <span key={key++}>{remaining.slice(0, match.index)}</span>
+            );
+        }
+        // **粗體**
+        if (match[1]) {
+            elements.push(
+                <strong key={key++}>{match[2]}</strong>
+            );
+        }
+        // [連結](url)
+        if (match[3]) {
+            elements.push(
+                <a
+                    key={key++}
+                    href={match[5]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#2563eb', textDecoration: 'underline' }}
+                >
+                    {match[4]}
+                </a>
+            );
+        }
+        remaining = remaining.slice(match.index + match[0].length);
+    }
+    return elements;
 }
 
 // --- 公告彈窗元件 ---
