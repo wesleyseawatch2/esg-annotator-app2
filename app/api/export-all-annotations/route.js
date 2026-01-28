@@ -6,43 +6,44 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const format = searchParams.get('format') || 'json'; // 'json' or 'csv'
 
-        // 1. 獲取所有初次標註專案（不管是否完成）
-        const initialProjects = await sql`
+        const allAnnotations = [];
+
+        // 1. 獲取所有專案及其所有輪次的標註資料（直接從 annotations 表查詢）
+        // 這樣可以確保即使 reannotation_rounds 表沒有記錄，也能匯出重標註資料
+        const allProjectRounds = await sql`
             SELECT DISTINCT
                 p.id as project_id,
                 p.name as project_name,
-                pg.name as group_name
+                pg.name as group_name,
+                COALESCE(a.reannotation_round, 0) as reannotation_round
             FROM projects p
             LEFT JOIN project_groups pg ON p.group_id = pg.id
-            WHERE EXISTS (
-                SELECT 1
-                FROM annotations a
-                JOIN source_data sd ON a.source_data_id = sd.id
-                WHERE sd.project_id = p.id
-                    AND a.reannotation_round = 0
-            )
-            ORDER BY pg.name, p.name
+            JOIN source_data sd ON sd.project_id = p.id
+            JOIN annotations a ON a.source_data_id = sd.id
+            ORDER BY pg.name, p.name, reannotation_round
         `;
 
-        // 2. 獲取所有重標註輪次（不管是否完成）
-        const reannotationRounds = await sql`
+        // 2. 獲取 reannotation_rounds 表的資訊（用於取得 task_group 等額外資訊）
+        const reannotationRoundsInfo = await sql`
             SELECT
-                rr.id as round_id,
-                rr.project_id,
-                p.name as project_name,
-                pg.name as group_name,
-                rr.round_number,
-                rr.task_group
-            FROM reannotation_rounds rr
-            JOIN projects p ON rr.project_id = p.id
-            LEFT JOIN project_groups pg ON p.group_id = pg.id
-            ORDER BY pg.name, p.name, rr.round_number, rr.task_group
+                project_id,
+                round_number,
+                task_group
+            FROM reannotation_rounds
         `;
 
-        const allAnnotations = [];
+        // 建立查詢用的 Map
+        const roundInfoMap = new Map();
+        reannotationRoundsInfo.rows.forEach(r => {
+            const key = `${r.project_id}-${r.round_number}`;
+            roundInfoMap.set(key, r.task_group);
+        });
 
-        // 3. 處理初次標註專案（包含所有狀態）
-        for (const project of initialProjects.rows) {
+        // 3. 處理每個專案的每個輪次
+        for (const projectRound of allProjectRounds.rows) {
+            const { project_id, project_name, group_name, reannotation_round } = projectRound;
+
+            // 查詢該專案該輪次的所有標註（取最新版本）
             const annotations = await sql`
                 SELECT DISTINCT ON (a.source_data_id, a.user_id)
                     a.source_data_id,
@@ -55,24 +56,31 @@ export async function GET(request) {
                     a.evidence_quality,
                     a.persist_answer,
                     a.reannotation_comment,
+                    a.reannotation_round,
                     a.status,
                     a.skipped,
                     a.created_at
                 FROM annotations a
                 JOIN source_data sd ON a.source_data_id = sd.id
                 JOIN users u ON a.user_id = u.id
-                WHERE sd.project_id = ${project.project_id}
-                    AND a.reannotation_round = 0
+                WHERE sd.project_id = ${project_id}
+                    AND COALESCE(a.reannotation_round, 0) = ${reannotation_round}
                 ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
             `;
 
+            // 判斷標註類型和取得 task_group
+            const isReannotation = reannotation_round > 0;
+            const roundKey = `${project_id}-${reannotation_round}`;
+            const taskGroup = roundInfoMap.get(roundKey) || (isReannotation ? '未記錄' : '全部');
+
             annotations.rows.forEach(ann => {
                 allAnnotations.push({
-                    group_name: project.group_name || '未分組',
-                    project_name: project.project_name,
-                    annotation_type: '初次標註',
-                    round_number: 0,
-                    task_group: '全部',
+                    group_name: group_name || '未分組',
+                    project_name: project_name,
+                    annotation_type: isReannotation ? '重標註' : '初次標註',
+                    round_number: reannotation_round,
+                    task_group: taskGroup,
+                    reannotation_round: ann.reannotation_round || 0,
                     source_data_id: ann.source_data_id,
                     original_data: ann.original_data,
                     user_id: ann.user_id,
@@ -90,107 +98,11 @@ export async function GET(request) {
             });
         }
 
-        // 4. 處理重標註輪次（包含所有狀態，混合重標註和原始資料）
-        for (const round of reannotationRounds.rows) {
-            const annotations = await sql`
-                WITH reannotated_data AS (
-                    -- 重標註的資料（使用最新版本）
-                    SELECT DISTINCT ON (a.source_data_id, a.user_id)
-                        a.source_data_id,
-                        a.user_id,
-                        a.promise_status,
-                        a.verification_timeline,
-                        a.evidence_status,
-                        a.evidence_quality,
-                        a.persist_answer,
-                        a.reannotation_comment,
-                        a.status,
-                        a.skipped,
-                        a.created_at
-                    FROM annotations a
-                    JOIN source_data sd ON a.source_data_id = sd.id
-                    WHERE sd.project_id = ${round.project_id}
-                        AND a.reannotation_round = ${round.round_number}
-                    ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
-                ),
-                original_data AS (
-                    -- 原始資料（沒被重標註的）
-                    SELECT DISTINCT ON (a.source_data_id, a.user_id)
-                        a.source_data_id,
-                        a.user_id,
-                        a.promise_status,
-                        a.verification_timeline,
-                        a.evidence_status,
-                        a.evidence_quality,
-                        a.persist_answer,
-                        a.reannotation_comment,
-                        a.status,
-                        a.skipped,
-                        a.created_at
-                    FROM annotations a
-                    JOIN source_data sd ON a.source_data_id = sd.id
-                    WHERE sd.project_id = ${round.project_id}
-                        AND a.reannotation_round = 0
-                        AND a.source_data_id NOT IN (
-                            SELECT DISTINCT source_data_id
-                            FROM reannotated_data
-                        )
-                    ORDER BY a.source_data_id, a.user_id, a.version DESC, a.created_at DESC
-                )
-                SELECT
-                    sd.id as source_data_id,
-                    sd.original_data,
-                    a.user_id,
-                    u.username,
-                    a.promise_status,
-                    a.verification_timeline,
-                    a.evidence_status,
-                    a.evidence_quality,
-                    a.persist_answer,
-                    a.reannotation_comment,
-                    a.status,
-                    a.skipped,
-                    a.created_at
-                FROM (
-                    SELECT * FROM reannotated_data
-                    UNION ALL
-                    SELECT * FROM original_data
-                ) a
-                JOIN source_data sd ON a.source_data_id = sd.id
-                JOIN users u ON a.user_id = u.id
-                WHERE sd.project_id = ${round.project_id}
-                ORDER BY sd.id, a.user_id
-            `;
-
-            annotations.rows.forEach(ann => {
-                allAnnotations.push({
-                    group_name: round.group_name || '未分組',
-                    project_name: round.project_name,
-                    annotation_type: '重標註',
-                    round_number: round.round_number,
-                    task_group: round.task_group,
-                    source_data_id: ann.source_data_id,
-                    original_data: ann.original_data,
-                    user_id: ann.user_id,
-                    username: ann.username,
-                    promise_status: ann.promise_status,
-                    verification_timeline: ann.verification_timeline,
-                    evidence_status: ann.evidence_status,
-                    evidence_quality: ann.evidence_quality,
-                    persist_answer: ann.persist_answer,
-                    reannotation_comment: ann.reannotation_comment,
-                    status: ann.status,
-                    skipped: ann.skipped,
-                    created_at: ann.created_at
-                });
-            });
-        }
-
-        // 5. 根據格式返回資料
+        // 4. 根據格式返回資料
         if (format === 'csv') {
             // 生成 CSV
             const headers = [
-                '組別', '專案名稱', '標註類型', '輪次', '任務組別',
+                '組別', '專案名稱', '標註類型', '輪次', '任務組別', 'reannotation_round',
                 '資料ID', '原始文本', '用戶ID', '用戶名稱',
                 '承諾狀態', '驗證時間', '證據狀態', '證據品質',
                 '堅持答案', '重標註備註', '狀態', '已跳過', '標註時間'
@@ -214,6 +126,7 @@ export async function GET(request) {
                     escapeCSV(ann.annotation_type),
                     escapeCSV(ann.round_number),
                     escapeCSV(ann.task_group),
+                    escapeCSV(ann.reannotation_round),
                     escapeCSV(ann.source_data_id),
                     escapeCSV(ann.original_data),
                     escapeCSV(ann.user_id),
@@ -240,13 +153,21 @@ export async function GET(request) {
             });
         } else {
             // 返回 JSON
+            // 統計資訊
+            const initialCount = allAnnotations.filter(a => a.reannotation_round === 0).length;
+            const reannotationCount = allAnnotations.filter(a => a.reannotation_round > 0).length;
+            const uniqueProjects = [...new Set(allAnnotations.map(a => a.project_name))].length;
+            const uniqueRounds = [...new Set(allAnnotations.filter(a => a.reannotation_round > 0).map(a => `${a.project_name}-${a.reannotation_round}`))].length;
+
             return NextResponse.json({
                 success: true,
                 data: allAnnotations,
                 totalCount: allAnnotations.length,
                 summary: {
-                    initialProjects: initialProjects.rows.length,
-                    reannotationRounds: reannotationRounds.rows.length,
+                    uniqueProjects: uniqueProjects,
+                    initialAnnotations: initialCount,
+                    reannotationAnnotations: reannotationCount,
+                    uniqueReannotationRounds: uniqueRounds,
                     totalAnnotations: allAnnotations.length
                 }
             });
